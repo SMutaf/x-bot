@@ -2,39 +2,36 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"net/http"
-	"time"
+	"sync"
+
+	"github.com/SMutaf/twitter-bot/backend/config"
+	"github.com/SMutaf/twitter-bot/backend/internal/dedup"
+	"github.com/SMutaf/twitter-bot/backend/internal/scraper"
 )
 
 func main() {
-	// 1. Örnek bir RSS kaynağı (Hacker News)
-	rssURL := "https://news.ycombinator.com/rss"
-	
-	fmt.Println("Haberler çekiliyor: " + rssURL)
+	fmt.Println("Twitter Bot Backend Başlatılıyor...")
 
-	// 2. HTTP İsteği Atmak (Timeout ekledik ki sonsuza kadar beklemesin)
-	client := http.Client{
-		Timeout: 10 * time.Second,
+	// 1. Ayarları Yükle
+	cfg := config.LoadConfig()
+
+	// 2. Redis Bağlantısını Başlat (Hafıza)
+	cache := dedup.NewDeduplicator("localhost:6379")
+	fmt.Println("Redis Hafızası Devrede!")
+
+	// 3. Scraper'ı Başlat (Hafızayı içine veriyoruz)
+	sc := scraper.NewRSSScraper(cache)
+
+	// 4. Haberleri Tara
+	var wg sync.WaitGroup
+	for _, url := range cfg.RSSUrls {
+		wg.Add(1)
+		go func(targetUrl string) {
+			defer wg.Done()
+			sc.Fetch(targetUrl)
+		}(url)
 	}
 
-	resp, err := client.Get(rssURL)
-	if err != nil {
-		fmt.Println("Hata oluştu:", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	// 3. Cevabı Okumak
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println("Veri okunamadı:", err)
-		return
-	}
-
-	// 4. Ekrana Basmak (İlk 500 karakteri basalım, ekran dolmasın)
-	fmt.Println("--- Gelen Ham Veri (İlk 500 Karakter) ---")
-	fmt.Println(string(body)[:500]) 
-	fmt.Println("...")
-	fmt.Println("--- Başarılı! ---")
+	wg.Wait()
+	fmt.Println("Tüm taramalar tamamlandı.")
 }
