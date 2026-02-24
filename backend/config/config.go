@@ -12,6 +12,7 @@ func LoadConfig() *Config {
 			"https://feeds.feedburner.com/TechCrunch/", // Teknoloji Haberleri
 			"https://news.ycombinator.com/rss",         // Hacker News
 			"https://openai.com/blog/rss.xml",          // AI Haberleri (Proje için önemli)
+			"https://feeds.bbci.co.uk/news/technology/rss.xml",
 		},
 	}
 }
