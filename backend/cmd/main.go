@@ -8,6 +8,7 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/ai"
 	"github.com/SMutaf/twitter-bot/backend/internal/dedup"
 	"github.com/SMutaf/twitter-bot/backend/internal/scraper"
+	"github.com/SMutaf/twitter-bot/backend/internal/telegram"
 )
 
 func main() {
@@ -16,18 +17,23 @@ func main() {
 	cfg := config.LoadConfig()
 
 	// 1. Redis (Hafıza)
-	cache := dedup.NewDeduplicator("localhost:6379")
+	cache := dedup.NewDeduplicator(cfg.RedisAddr)
 	fmt.Println("Redis Hafızası Devrede!")
 
 	// 2. AI İstemcisi (İletişim)
-	// Python servisinin adresi: http://localhost:8000
 	aiClient := ai.NewClient("http://localhost:8000")
 	fmt.Println("AI Servisine Bağlanıldı!")
 
-	// 3. Scraper (Redis + AI)
-	sc := scraper.NewRSSScraper(cache, aiClient)
+	// 3. Telegram Onay Botu (YENİ)
+	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
+	go tgBot.ListenForApproval()
+	fmt.Println("Telegram Onay Servisi Aktif!")
 
-	// 4. Tarama Başlasın
+	// 4. Scraper (Redis + AI + Telegram)
+	// Parametre sayısını 3'e çıkardık:
+	sc := scraper.NewRSSScraper(cache, aiClient, tgBot)
+
+	// 5. Tarama Başlasın
 	var wg sync.WaitGroup
 	for _, url := range cfg.RSSUrls {
 		wg.Add(1)

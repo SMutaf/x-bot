@@ -1,29 +1,34 @@
 from fastapi import FastAPI
 from models.schemas import TweetRequest, TweetResponse
+from services.llm import GeminiService 
 import uvicorn
 
-app = FastAPI(title="XNewsBot AI Engine")
+app = FastAPI(title="XNewsBot AI Engine (Gemini Powered) 💎")
+
+# Gemini servisini başlat
+ai_service = GeminiService()
 
 @app.get("/")
 def read_root():
-    return {"status": "AI Engine is Online", "model": "GPT-4o (Waiting...)"}
+    return {"status": "Gemini AI Engine is Online 🚀", "model": "gemini-1.5-flash"}
 
-# Go servisinin çağıracağı endpoint
 @app.post("/generate-tweet", response_model=TweetResponse)
 def generate_tweet_endpoint(request: TweetRequest):
-    print(f"Haber Geldi: {request.title} ({request.source})")
+    print(f"💎 Gemini Çalışıyor: {request.title}...")
     
-    # --- BURAYA SONRA GERÇEK AI GELECEK ---
-    # Şimdilik sistemin çalıştığını görmek için sahte cevap dönüyoruz.
-    mock_tweet = f"Bu haber çok konuşulur!{request.title} hakkında detaylar şaşırtıcı. Siz ne düşünüyorsunuz?"
-    mock_reply = f"Kaynağı incelemek isteyenler için: {request.url}"
+    #  Yapay Zekaya Gönder
+    result = ai_service.generate_viral_tweet(
+        title=request.title,
+        content=request.content,
+        url=request.url,
+        source=request.source
+    )
     
     return TweetResponse(
-        tweet=mock_tweet,
-        reply=mock_reply,
-        sentiment="positive"
+        tweet=result["tweet"],
+        reply=result["reply"],
+        sentiment=result["sentiment"]
     )
 
 if __name__ == "__main__":
-    # 8000 portunda çalıştır
     uvicorn.run(app, host="0.0.0.0", port=8000)

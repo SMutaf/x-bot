@@ -33,7 +33,7 @@ func NewClient(apiURL string) *Client {
 	return &Client{
 		BaseURL: apiURL,
 		HTTPClient: &http.Client{
-			Timeout: 30 * time.Second, // AI bazen yavaş cevap verebilir
+			Timeout: 60 * time.Second, // AI yavaş cevap verebilir
 		},
 	}
 }
