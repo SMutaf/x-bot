@@ -1,10 +1,10 @@
-# --- Genel ---
+# --- Genel (OS & IDE) ---
 .DS_Store
 .vscode/
 .idea/
 *.log
 
-# --- Hassas Dosyalar  ---
+# --- Hassas Dosyalar ---
 .env
 config.json
 secrets.yaml
@@ -15,14 +15,14 @@ secrets.yaml
 *.exe
 *.test
 *.out
-go.sum
 
-# --- Python (AI Service) ---
-/ai-service/__pycache__/
-/ai-service/*.py[cod]
-/ai-service/venv/
-/ai-service/.venv/
-/ai-service/env/
+# --- Python (AI Engine & Genel) ---
+# Klasör isminden bağımsız tüm venv'leri yoksay:
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
 *.so
 .Python
 pip-log.txt
