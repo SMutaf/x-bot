@@ -1,0 +1,28 @@
+# --- Genel ---
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# --- Hassas Dosyalar  ---
+.env
+config.json
+secrets.yaml
+
+# --- Go (Backend) ---
+/backend/bin/
+/backend/dist/
+*.exe
+*.test
+*.out
+go.sum
+
+# --- Python (AI Service) ---
+/ai-service/__pycache__/
+/ai-service/*.py[cod]
+/ai-service/venv/
+/ai-service/.venv/
+/ai-service/env/
+*.so
+.Python
+pip-log.txt
