@@ -3,6 +3,8 @@ package dedup
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -13,12 +15,11 @@ type Deduplicator struct {
 	Ctx    context.Context
 }
 
-// NewDeduplicator yeni bir Redis bağlantısı oluşturur
 func NewDeduplicator(addr string) *Deduplicator {
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     addr, // Örn: "localhost:6379"
-		Password: "",   // Şifre yoksa boş bırak
-		DB:       0,    // Varsayılan veritabanı
+		Addr:     addr,
+		Password: "",
+		DB:       0,
 	})
 
 	return &Deduplicator{
@@ -27,26 +28,37 @@ func NewDeduplicator(addr string) *Deduplicator {
 	}
 }
 
-// IsDuplicate linki kontrol eder.
-// Eğer link daha önce VARSA -> true döner (İşleme!)
-// Eğer link YOKSA -> Redis'e kaydeder ve false döner (İşle!)
+func (d *Deduplicator) slugify(text string) string {
+	re := regexp.MustCompile("[^a-z0-9]+")
+	return strings.Trim(re.ReplaceAllString(strings.ToLower(text), "-"), "-")
+}
+
 func (d *Deduplicator) IsDuplicate(url string) bool {
-	// 1. Önce var mı diye soruyoruz
 	exists, err := d.Client.Exists(d.Ctx, url).Result()
 	if err != nil {
-		fmt.Printf("⚠️ Redis Hatası: %v\n", err)
-		return false // Hata varsa işlemeye devam etsin, akışı bozmayalım
+		fmt.Printf("Redis Hatası: %v\n", err)
+		return false
 	}
 
 	if exists > 0 {
-		return true // Evet, bu linki daha önce kaydetmişiz
+		return true
 	}
 
-	// 2. Yoksa kaydediyoruz (7 gün sonra silinsin diye TTL ekledik)
 	err = d.Client.Set(d.Ctx, url, "seen", 7*24*time.Hour).Err()
 	if err != nil {
-		fmt.Printf("⚠️ Redis Kayıt Hatası: %v\n", err)
+		fmt.Printf("Redis Kayıt Hatası: %v\n", err)
 	}
 
-	return false // Hayır, bu yeni bir link
+	return false
+}
+
+func (d *Deduplicator) IsTitleDuplicate(title string) bool {
+	slug := "title:" + d.slugify(title)
+	exists, _ := d.Client.Exists(d.Ctx, slug).Result()
+	if exists > 0 {
+		return true
+	}
+	// Başlığı 24 saat boyunca saklar
+	d.Client.Set(d.Ctx, slug, "seen", 24*time.Hour)
+	return false
 }

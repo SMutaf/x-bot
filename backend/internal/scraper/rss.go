@@ -40,25 +40,28 @@ func (s *RSSScraper) Fetch(url string) {
 	fmt.Printf("Kaynak Taranıyor: %s\n", feed.Title)
 
 	for _, item := range feed.Items {
-		// 1. Daha önce işledik mi? (Redis kontrolü)
+		// 1. Link bazlı kontrol
 		if s.Cache.IsDuplicate(item.Link) {
+			continue
+		}
+
+		// 2. Başlık bazlı kontrol (Farklı kaynaklardaki aynı haberi engeller)
+		if s.Cache.IsTitleDuplicate(item.Title) {
+			fmt.Printf("Benzer haber pas geçildi: %s\n", item.Title)
 			continue
 		}
 
 		fmt.Printf("\nYENİ HABER BULUNDU: %s\n", item.Title)
 
-		// 2. Haberi AI Servisine Gönder
 		response, err := s.AIClient.GenerateTweet(item.Title, item.Description, item.Link, feed.Title)
 		if err != nil {
 			fmt.Printf("AI Hatası: %v\n", err)
-			// Hata olsa bile diğer habere geçmeden önce biraz bekle ki API tamamen kilitlenmesin
 			time.Sleep(5 * time.Second)
 			continue
 		}
 
 		fmt.Println("AI Tweeti Hazırladı...")
 
-		// 3. Telegram Onayına Gönder
 		err = s.Telegram.RequestApproval(response.Tweet, response.Reply, feed.Title)
 		if err != nil {
 			fmt.Printf("Telegram Onay Mesajı Gönderilemedi: %v\n", err)
@@ -66,7 +69,6 @@ func (s *RSSScraper) Fetch(url string) {
 			fmt.Println("Onay mesajı telefonuna gönderildi!")
 		}
 
-		// Google Gemini Free Tier için her istek arasında 10 saniye bekle
 		fmt.Println("Kota aşımını önlemek için 10 saniye bekleniyor...")
 		time.Sleep(10 * time.Second)
 	}
