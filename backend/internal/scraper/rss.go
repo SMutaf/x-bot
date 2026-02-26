@@ -5,25 +5,25 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/ai"
 	"github.com/SMutaf/twitter-bot/backend/internal/dedup"
-	"github.com/SMutaf/twitter-bot/backend/internal/telegram"
+	"github.com/SMutaf/twitter-bot/backend/internal/models"
 	"github.com/mmcdole/gofeed"
 )
 
 type RSSScraper struct {
-	Parser   *gofeed.Parser
-	Cache    *dedup.Deduplicator
-	AIClient *ai.Client
-	Telegram *telegram.ApprovalBot
+	Parser       *gofeed.Parser
+	Cache        *dedup.Deduplicator
+	Out          chan<- models.NewsItem
+	MaxPerSource int // Kaynak başına max haber limiti
 }
 
-func NewRSSScraper(cache *dedup.Deduplicator, aiClient *ai.Client, tgBot *telegram.ApprovalBot) *RSSScraper {
+// NewRSSScraper artık maxPerSource parametresi de alıyor
+func NewRSSScraper(cache *dedup.Deduplicator, out chan<- models.NewsItem, maxPerSource int) *RSSScraper {
 	return &RSSScraper{
-		Parser:   gofeed.NewParser(),
-		Cache:    cache,
-		AIClient: aiClient,
-		Telegram: tgBot,
+		Parser:       gofeed.NewParser(),
+		Cache:        cache,
+		Out:          out,
+		MaxPerSource: maxPerSource,
 	}
 }
 
@@ -37,39 +37,33 @@ func (s *RSSScraper) Fetch(url string) {
 		return
 	}
 
-	fmt.Printf("Kaynak Taranıyor: %s\n", feed.Title)
-
+	count := 0
 	for _, item := range feed.Items {
+		// Kaynak başına limit kontrolü
+		if count >= s.MaxPerSource {
+			fmt.Printf("Kaynak limiti doldu (%d/%d): %s\n", count, s.MaxPerSource, feed.Title)
+			break
+		}
+
 		// 1. Link bazlı kontrol
 		if s.Cache.IsDuplicate(item.Link) {
 			continue
 		}
 
-		// 2. Başlık bazlı kontrol (Farklı kaynaklardaki aynı haberi engeller)
+		// 2. Başlık bazlı kontrol
 		if s.Cache.IsTitleDuplicate(item.Title) {
 			fmt.Printf("Benzer haber pas geçildi: %s\n", item.Title)
 			continue
 		}
 
-		fmt.Printf("\nYENİ HABER BULUNDU: %s\n", item.Title)
-
-		response, err := s.AIClient.GenerateTweet(item.Title, item.Description, item.Link, feed.Title)
-		if err != nil {
-			fmt.Printf("AI Hatası: %v\n", err)
-			time.Sleep(5 * time.Second)
-			continue
+		s.Out <- models.NewsItem{
+			Title:       item.Title,
+			Description: item.Description,
+			Link:        item.Link,
+			Source:      feed.Title,
 		}
 
-		fmt.Println("AI Tweeti Hazırladı...")
-
-		err = s.Telegram.RequestApproval(response.Tweet, response.Reply, feed.Title)
-		if err != nil {
-			fmt.Printf("Telegram Onay Mesajı Gönderilemedi: %v\n", err)
-		} else {
-			fmt.Println("Onay mesajı telefonuna gönderildi!")
-		}
-
-		fmt.Println("Kota aşımını önlemek için 10 saniye bekleniyor...")
-		time.Sleep(10 * time.Second)
+		fmt.Printf("Haber kanala gönderildi [%d/%d]: %s\n", count+1, s.MaxPerSource, item.Title)
+		count++
 	}
 }

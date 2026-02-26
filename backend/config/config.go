@@ -9,20 +9,19 @@ import (
 )
 
 type Config struct {
-	RSSUrls        []string
-	RedisAddr      string
-	TelegramToken  string
-	TelegramChatID int64
+	RSSUrls          []string
+	RedisAddr        string
+	TelegramToken    string
+	TelegramChatID   int64
+	MaxNewsPerSource int // Her RSS kaynağından tek turda alınacak max haber sayısı
 }
 
 func LoadConfig() *Config {
-	// .env dosyasını yükle
 	err := godotenv.Load()
 	if err != nil {
 		log.Println(".env dosyası bulunamadı, sistem değişkenleri kullanılacak.")
 	}
 
-	// Telegram Chat ID'yi string'den int64'e çevir
 	chatID, _ := strconv.ParseInt(os.Getenv("TELEGRAM_CHAT_ID"), 10, 64)
 
 	return &Config{
@@ -32,13 +31,13 @@ func LoadConfig() *Config {
 			"https://openai.com/blog/rss.xml",
 			"https://feeds.bbci.co.uk/news/technology/rss.xml",
 		},
-		RedisAddr:      getEnv("REDIS_ADDR", "localhost:6379"),
-		TelegramToken:  os.Getenv("TELEGRAM_TOKEN"),
-		TelegramChatID: chatID,
+		RedisAddr:        getEnv("REDIS_ADDR", "localhost:6379"),
+		TelegramToken:    os.Getenv("TELEGRAM_TOKEN"),
+		TelegramChatID:   chatID,
+		MaxNewsPerSource: 3, // Kaynak başına max 3 haber (4 kaynak × 3 = max 12 haber/tur)
 	}
 }
 
-// getEnv yardımcı fonksiyon: Değişken yoksa varsayılan değeri döndürür
 func getEnv(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
 		return value
