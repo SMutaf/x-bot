@@ -4,11 +4,12 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate 
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 # 1. Ortam değişkenlerini yükle
 load_dotenv()
 
-# 2. Çıktı formatını belirle 
+# 2. Çıktı formatı
 class TweetOutput(BaseModel):
     tweet: str = Field(description="Viral, engaging tweet content in Turkish without links.")
     reply: str = Field(description="Reply content containing the source link and hashtags.")
@@ -16,12 +17,26 @@ class TweetOutput(BaseModel):
 
 class GeminiService:
     def __init__(self):
+        # API Key kontrolü
+        if not os.getenv("GOOGLE_API_KEY"):
+            raise ValueError("GOOGLE_API_KEY ortam değişkeni bulunamadı!")
+
         self.llm = ChatGoogleGenerativeAI(
-            model="gemma-3-12b-it", 
+            model="gemma-3-12b-it",
             temperature=0.7,
             convert_system_message_to_human=True
         )
         self.parser = JsonOutputParser(pydantic_object=TweetOutput)
+
+    @retry(
+        stop=stop_after_attempt(3), 
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type(Exception),
+        reraise=True 
+    )
+    def _invoke_chain(self, chain, inputs):
+        """Zinciri çalıştırır, hata varsa retry devreye girer."""
+        return chain.invoke(inputs)
 
     def generate_viral_tweet(self, title: str, content: str, url: str, source: str):
         template = """
@@ -65,26 +80,14 @@ class GeminiService:
         prompt = PromptTemplate(
             template=template,
             input_variables=["source", "title", "content", "url"],
-            partial_variables={
-                "format_instructions": self.parser.get_format_instructions()
-            }
+            partial_variables={"format_instructions": self.parser.get_format_instructions()}
         )
 
         chain = prompt | self.llm | self.parser
 
-        try:
-            response = chain.invoke({
-                "source": source,
-                "title": title,
-                "content": content or "Detaylar linkte.",
-                "url": url
-            })
-            return response
-
-        except Exception as e:
-            print(f"Gemini Hatası: {e}")
-            return {
-                "tweet": f" {title}\n\nTeknoloji dünyasındaki bu gelişme hakkında ne düşünüyorsunuz?",
-                "reply": f"Kaynak: {source}\nDetaylar: {url}",
-                "sentiment": "neutral"
-            }
+        return self._invoke_chain(chain, {
+            "source": source,
+            "title": title,
+            "content": content or "Detaylar linkte.",
+            "url": url
+        })
