@@ -23,12 +23,12 @@ func NewRSSScraper(cache *dedup.Deduplicator, aiClient *ai.Client, tgBot *telegr
 		Parser:   gofeed.NewParser(),
 		Cache:    cache,
 		AIClient: aiClient,
-		Telegram: tgBot, // Botu struct'a bağladık
+		Telegram: tgBot,
 	}
 }
 
 func (s *RSSScraper) Fetch(url string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	feed, err := s.Parser.ParseURLWithContext(url, ctx)
@@ -47,14 +47,15 @@ func (s *RSSScraper) Fetch(url string) {
 
 		fmt.Printf("\nYENİ HABER BULUNDU: %s\n", item.Title)
 
-		// 2. Haberi AI Servisine (Python/Gemma 3) Gönder
+		// 2. Haberi AI Servisine Gönder
 		response, err := s.AIClient.GenerateTweet(item.Title, item.Description, item.Link, feed.Title)
 		if err != nil {
 			fmt.Printf("AI Hatası: %v\n", err)
+			// Hata olsa bile diğer habere geçmeden önce biraz bekle ki API tamamen kilitlenmesin
+			time.Sleep(5 * time.Second)
 			continue
 		}
 
-		// log
 		fmt.Println("AI Tweeti Hazırladı...")
 
 		// 3. Telegram Onayına Gönder
@@ -65,7 +66,8 @@ func (s *RSSScraper) Fetch(url string) {
 			fmt.Println("Onay mesajı telefonuna gönderildi!")
 		}
 
-		// Kaynakları yormamak için kısa bir bekleme
-		time.Sleep(1 * time.Second)
+		// Google Gemini Free Tier için her istek arasında 10 saniye bekle
+		fmt.Println("Kota aşımını önlemek için 10 saniye bekleniyor...")
+		time.Sleep(10 * time.Second)
 	}
 }

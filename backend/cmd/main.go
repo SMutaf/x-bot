@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"sync"
+	"time"
 
 	"github.com/SMutaf/twitter-bot/backend/config"
 	"github.com/SMutaf/twitter-bot/backend/internal/ai"
@@ -12,37 +12,47 @@ import (
 )
 
 func main() {
-	fmt.Println("Twitter Bot Backend Başlatılıyor...")
+	fmt.Println("🚀 Twitter Bot Backend Başlatılıyor (SIRALI MOD)...")
 
 	cfg := config.LoadConfig()
 
-	// 1. Redis (Hafıza)
-	cache := dedup.NewDeduplicator(cfg.RedisAddr)
+	cache := dedup.NewDeduplicator(cfg.RedisAddr) // silincek
+
+	cache.Client.FlushAll(cache.Ctx)
+	fmt.Println("Redis Hafızası TEMİZLENDİ! (Tüm haberler yeni sayılacak)")
+
 	fmt.Println("Redis Hafızası Devrede!")
 
-	// 2. AI İstemcisi (İletişim)
+	// 2. AI İstemcisi
 	aiClient := ai.NewClient("http://localhost:8000")
 	fmt.Println("AI Servisine Bağlanıldı!")
 
-	// 3. Telegram Onay Botu (YENİ)
+	// 3. Telegram Botu
 	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
 	go tgBot.ListenForApproval()
 	fmt.Println("Telegram Onay Servisi Aktif!")
 
-	// 4. Scraper (Redis + AI + Telegram)
-	// Parametre sayısını 3'e çıkardık:
+	// 4. Scraper
 	sc := scraper.NewRSSScraper(cache, aiClient, tgBot)
 
-	// 5. Tarama Başlasın
-	var wg sync.WaitGroup
-	for _, url := range cfg.RSSUrls {
-		wg.Add(1)
-		go func(targetUrl string) {
-			defer wg.Done()
-			sc.Fetch(targetUrl)
-		}(url)
-	}
+	fmt.Println("Bot Sürekli Tarama Moduna Geçiyor...")
 
-	wg.Wait()
-	fmt.Println("Tüm işlemler tamamlandı.")
+	// --- SONSUZ DÖNGÜ ---
+	for {
+		fmt.Println("\n--- Yeni Tarama Turu Başlıyor ---")
+
+		// DİKKAT: "go func" ve "WaitGroup" YOK.
+		// Kaynakları tek tek, sırayla tarıyoruz.
+		for _, url := range cfg.RSSUrls {
+			fmt.Printf(">> Kaynak Taranıyor: %s\n", url)
+			sc.Fetch(url)
+
+			// Her kaynak arasında 5 saniye nefes alıyoruz
+			fmt.Println("Diğer kaynağa geçmeden 5 saniye bekleniyor...")
+			time.Sleep(5 * time.Second)
+		}
+
+		fmt.Println("Bu tur bitti. 15 dakika dinleniliyor...")
+		time.Sleep(15 * time.Minute)
+	}
 }
