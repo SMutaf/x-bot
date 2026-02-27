@@ -8,15 +8,14 @@ import (
 	"time"
 )
 
-// Python'a göndereceğimiz veri formatı
 type TweetRequest struct {
-	Title   string `json:"title"`
-	Content string `json:"content"`
-	URL     string `json:"url"`
-	Source  string `json:"source"`
+	Title    string `json:"title"`
+	Content  string `json:"content"`
+	URL      string `json:"url"`
+	Source   string `json:"source"`
+	Category string `json:"category"` // BREAKING / TECH / GENERAL
 }
 
-// Python'dan gelecek cevap formatı
 type TweetResponse struct {
 	Tweet     string `json:"tweet"`
 	Reply     string `json:"reply"`
@@ -28,28 +27,26 @@ type Client struct {
 	HTTPClient *http.Client
 }
 
-// NewClient yeni bir AI istemcisi oluşturur
 func NewClient(apiURL string) *Client {
 	return &Client{
 		BaseURL: apiURL,
 		HTTPClient: &http.Client{
-			Timeout: 180 * time.Second, // AI yavaş cevap verebilir
+			Timeout: 180 * time.Second,
 		},
 	}
 }
 
-// GenerateTweet haberi Python servisine gönderir ve cevabı alır
-func (c *Client) GenerateTweet(title, content, url, source string) (*TweetResponse, error) {
+func (c *Client) GenerateTweet(title, content, url, source, category string) (*TweetResponse, error) {
 	reqBody := TweetRequest{
-		Title:   title,
-		Content: content,
-		URL:     url,
-		Source:  source,
+		Title:    title,
+		Content:  content,
+		URL:      url,
+		Source:   source,
+		Category: category,
 	}
 
 	jsonValue, _ := json.Marshal(reqBody)
 
-	// Python servisine POST isteği atıyoruz
 	resp, err := c.HTTPClient.Post(c.BaseURL+"/generate-tweet", "application/json", bytes.NewBuffer(jsonValue))
 	if err != nil {
 		return nil, fmt.Errorf("AI servisine ulaşılamadı: %v", err)

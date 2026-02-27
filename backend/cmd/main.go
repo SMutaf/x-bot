@@ -27,62 +27,58 @@ func main() {
 	aiClient := ai.NewClient("http://localhost:8000")
 	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
 
-	// Telegram onay dinleyicisini asenkron başlatıyoruz
 	go tgBot.ListenForApproval()
 	fmt.Println("Telegram Onay Servisi Aktif!")
 
-	// 1. Haber Kanalı Oluşturma (Buffer size: 100)
 	newsChannel := make(chan models.NewsItem, 100)
-
-	// 2. Scraper Tanımlama
 	sc := scraper.NewRSSScraper(cache, newsChannel, cfg.MaxNewsPerSource)
 
-	// 3. Rate Limiter: Dakikada max 20 istek (Gemini limitinin altında güvenli tampon)
-	// Her istek arası en az 3 saniye bekler
+	// Rate limiter: 3 saniyede 1 istek → dakikada max 20 (Gemini limitinin altında)
 	limiter := rate.NewLimiter(rate.Every(3*time.Second), 1)
 
-	// 4. Worker Başlatma
+	// Worker
 	go func() {
 		for item := range newsChannel {
-			// Rate limiter: token hazır olana kadar bekler, sonra devam eder
 			limiter.Wait(context.Background())
-
 			middleware.RecoveryWrapper("Worker İşlemi", func() {
 				processNews(item, aiClient, tgBot)
 			})
 		}
 	}()
 
-	fmt.Println("Asenkron Worker Başlatıldı! (Rate Limit: 3sn/istek)")
-	fmt.Println("Bot Sürekli Tarama Moduna Geçiyor...")
+	fmt.Println("Worker Başlatıldı! (Rate Limit: 3sn/istek)")
 
-	for {
-		middleware.RecoveryWrapper("Tarama Turu", func() {
-			fmt.Println("\n--- Yeni Tarama Turu Başlıyor ---")
-
-			for _, url := range cfg.RSSUrls {
-				fmt.Printf(">> Kaynak Taranıyor: %s\n", url)
-				sc.Fetch(url)
-				time.Sleep(2 * time.Second) // Kaynaklar arası kısa bekleme
+	// Her kaynak için ayrı goroutine başlatıyoruz
+	// Her kaynak kendi Interval'ına göre çalışır
+	for _, source := range cfg.RSSSources {
+		src := source // closure için kopyala
+		go func() {
+			fmt.Printf("Kaynak başlatıldı [%s | %s]: %s\n", src.Category, src.Interval, src.URL)
+			for {
+				middleware.RecoveryWrapper("Tarama", func() {
+					sc.Fetch(src)
+				})
+				time.Sleep(src.Interval)
 			}
-		})
-
-		fmt.Println("Bu tur bitti. 15 dakika dinleniliyor...")
-		time.Sleep(15 * time.Minute)
+		}()
 	}
+
+	fmt.Println("Tüm kaynaklar aktif. Bot çalışıyor...")
+
+	// Ana goroutine'i canlı tut
+	select {}
 }
 
-// processNews tekil bir haberin AI ve Telegram süreçlerini yönetir
 func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.ApprovalBot) {
-	fmt.Printf("İşleniyor: %s\n", item.Title)
+	fmt.Printf("[%s] İşleniyor: %s\n", item.Category, item.Title)
 
-	response, err := aiClient.GenerateTweet(item.Title, item.Description, item.Link, item.Source)
+	response, err := aiClient.GenerateTweet(item.Title, item.Description, item.Link, item.Source, string(item.Category))
 	if err != nil {
 		fmt.Printf("AI Hatası (%s): %v\n", item.Title, err)
 		return
 	}
 
-	err = tgBot.RequestApproval(response.Tweet, response.Reply, item.Source)
+	err = tgBot.RequestApproval(response.Tweet, response.Reply, item.Source, string(item.Category))
 	if err != nil {
 		fmt.Printf("Telegram Hatası: %v\n", err)
 	}

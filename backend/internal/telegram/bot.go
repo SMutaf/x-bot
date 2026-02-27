@@ -12,38 +12,43 @@ type ApprovalBot struct {
 	ChatID int64
 }
 
-// NewApprovalBot yeni bir Telegram bot istemcisi başlatır
 func NewApprovalBot(token string, chatID int64) *ApprovalBot {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		log.Panicf("Telegram bot başlatılamadı: %v", err)
 	}
+	return &ApprovalBot{Bot: bot, ChatID: chatID}
+}
 
-	return &ApprovalBot{
-		Bot:    bot,
-		ChatID: chatID,
+// Kategori emojisi ve etiketi
+func categoryLabel(category string) string {
+	switch category {
+	case "BREAKING":
+		return "🚨 SON DAKİKA"
+	case "TECH":
+		return "💻 TEKNOLOJİ"
+	case "GENERAL":
+		return "📰 GENEL"
+	default:
+		return "📌 HABER"
 	}
 }
 
-// RequestApproval hazırlanan tweeti onay için Telegram'a gönderir
-func (b *ApprovalBot) RequestApproval(tweet, reply, source string) error {
-	// Mesaj metnini oluşturuyoruz
+func (b *ApprovalBot) RequestApproval(tweet, reply, source, category string) error {
 	text := fmt.Sprintf(
-		"🔔 *YENİ TWEET ONAYI BEKLİYOR*\n\n"+
+		"%s\n\n"+
 			"*Kaynak:* %s\n\n"+
-			"*📝 Tweet:* \n%s\n\n"+
-			"*🔗 Yanıt (Link):* \n%s\n\n"+
+			"*📝 Tweet:*\n%s\n\n"+
+			"*🔗 Yanıt (Link):*\n%s\n\n"+
 			"Onaylıyor musun?",
-		source, tweet, reply,
+		categoryLabel(category), source, tweet, reply,
 	)
 
 	msg := tgbotapi.NewMessage(b.ChatID, text)
-	msg.ParseMode = "Markdown" // Kalın yazılar için
-
-	// Onay ve Red butonlarını  (Inline Keyboard)
+	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Onayla ve Paylaş", "approve"),
+			tgbotapi.NewInlineKeyboardButtonData("✅ Onayla", "approve"),
 			tgbotapi.NewInlineKeyboardButtonData("❌ Reddet", "reject"),
 		),
 	)
@@ -55,7 +60,6 @@ func (b *ApprovalBot) RequestApproval(tweet, reply, source string) error {
 func (b *ApprovalBot) ListenForApproval() {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
-
 	updates := b.Bot.GetUpdatesChan(u)
 
 	for update := range updates {
@@ -63,22 +67,19 @@ func (b *ApprovalBot) ListenForApproval() {
 			continue
 		}
 
-		// Butona basıldığında burası çalışır
 		callback := update.CallbackQuery
-
-		// Kullanıcıya "İşlem alınıyor" bildirimi gönderir
-		callbackCfg := tgbotapi.NewCallback(callback.ID, "İşlem yapılıyor...")
-		b.Bot.Request(callbackCfg)
+		b.Bot.Request(tgbotapi.NewCallback(callback.ID, "İşlem yapılıyor..."))
 
 		if callback.Data == "approve" {
-			// BURASI GELECEKTE X (TWITTER) API'SİNİ ÇAĞIRACAK
-			newText := callback.Message.Text + "\n\n✅ **BU TWEET ONAYLANDI VE PAYLAŞILDI!**"
+			newText := callback.Message.Text + "\n\n✅ *ONAYLANDI VE PAYLAŞILDI!*"
 			editMsg := tgbotapi.NewEditMessageText(b.ChatID, callback.Message.MessageID, newText)
+			editMsg.ParseMode = "Markdown"
 			b.Bot.Send(editMsg)
-			fmt.Println("🚀 Tweet onaylandı, X'e gönderiliyor (X API bekleniyor...)")
+			fmt.Println("🚀 Tweet onaylandı.")
 		} else if callback.Data == "reject" {
-			newText := callback.Message.Text + "\n\n❌ **BU İÇERİK REDDEDİLDİ.**"
+			newText := callback.Message.Text + "\n\n❌ *REDDEDİLDİ.*"
 			editMsg := tgbotapi.NewEditMessageText(b.ChatID, callback.Message.MessageID, newText)
+			editMsg.ParseMode = "Markdown"
 			b.Bot.Send(editMsg)
 			fmt.Println("🗑️ İçerik reddedildi.")
 		}

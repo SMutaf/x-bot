@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/SMutaf/twitter-bot/backend/config"
 	"github.com/SMutaf/twitter-bot/backend/internal/dedup"
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
 	"github.com/mmcdole/gofeed"
@@ -14,10 +15,9 @@ type RSSScraper struct {
 	Parser       *gofeed.Parser
 	Cache        *dedup.Deduplicator
 	Out          chan<- models.NewsItem
-	MaxPerSource int // Kaynak başına max haber limiti
+	MaxPerSource int
 }
 
-// NewRSSScraper artık maxPerSource parametresi de alıyor
 func NewRSSScraper(cache *dedup.Deduplicator, out chan<- models.NewsItem, maxPerSource int) *RSSScraper {
 	return &RSSScraper{
 		Parser:       gofeed.NewParser(),
@@ -27,30 +27,28 @@ func NewRSSScraper(cache *dedup.Deduplicator, out chan<- models.NewsItem, maxPer
 	}
 }
 
-func (s *RSSScraper) Fetch(url string) {
+// Fetch tek bir kaynağı tarar, kategoriyi NewsItem'a ekler
+func (s *RSSScraper) Fetch(source config.RSSSource) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	feed, err := s.Parser.ParseURLWithContext(url, ctx)
+	feed, err := s.Parser.ParseURLWithContext(source.URL, ctx)
 	if err != nil {
-		fmt.Printf("RSS Hatası (%s): %v\n", url, err)
+		fmt.Printf("RSS Hatası (%s): %v\n", source.URL, err)
 		return
 	}
 
 	count := 0
 	for _, item := range feed.Items {
-		// Kaynak başına limit kontrolü
 		if count >= s.MaxPerSource {
 			fmt.Printf("Kaynak limiti doldu (%d/%d): %s\n", count, s.MaxPerSource, feed.Title)
 			break
 		}
 
-		// 1. Link bazlı kontrol
 		if s.Cache.IsDuplicate(item.Link) {
 			continue
 		}
 
-		// 2. Başlık bazlı kontrol
 		if s.Cache.IsTitleDuplicate(item.Title) {
 			fmt.Printf("Benzer haber pas geçildi: %s\n", item.Title)
 			continue
@@ -61,9 +59,10 @@ func (s *RSSScraper) Fetch(url string) {
 			Description: item.Description,
 			Link:        item.Link,
 			Source:      feed.Title,
+			Category:    source.Category, // Kategori buradan geliyor
 		}
 
-		fmt.Printf("Haber kanala gönderildi [%d/%d]: %s\n", count+1, s.MaxPerSource, item.Title)
+		fmt.Printf("[%s] Haber kanala gönderildi [%d/%d]: %s\n", source.Category, count+1, s.MaxPerSource, item.Title)
 		count++
 	}
 }
