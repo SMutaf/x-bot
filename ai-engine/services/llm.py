@@ -1,15 +1,35 @@
 import os
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import PromptTemplate 
+from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-# 1. Ortam değişkenlerini yükle
 load_dotenv()
 
-# 2. Çıktı formatı
+# Kategori bazlı ton talimatları
+# Algoritma kuralları (280 char, no link, 2 emoji vb.) hiç değişmiyor
+# Sadece impact statement'ın tonu değişiyor
+CATEGORY_INSTRUCTIONS = {
+    "BREAKING": (
+        "This is BREAKING NEWS. "
+        "Be extremely concise and punchy. "
+        "Impact statement must feel urgent. "
+        "Question must demand immediate opinion."
+    ),
+    "TECH": (
+        "This is a technology deep-dive. "
+        "Impact statement should highlight technical significance. "
+        "Question should invite expert discussion."
+    ),
+    "GENERAL": (
+        "This is a general tech news item. "
+        "Balance informativeness with engagement. "
+        "Question should be broadly relatable."
+    ),
+}
+
 class TweetOutput(BaseModel):
     tweet: str = Field(description="Viral, engaging tweet content in Turkish without links.")
     reply: str = Field(description="Reply content containing the source link and hashtags.")
@@ -17,7 +37,6 @@ class TweetOutput(BaseModel):
 
 class GeminiService:
     def __init__(self):
-        # API Key kontrolü
         if not os.getenv("GOOGLE_API_KEY"):
             raise ValueError("GOOGLE_API_KEY ortam değişkeni bulunamadı!")
 
@@ -29,18 +48,24 @@ class GeminiService:
         self.parser = JsonOutputParser(pydantic_object=TweetOutput)
 
     @retry(
-        stop=stop_after_attempt(3), 
+        stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type(Exception),
-        reraise=True 
+        reraise=True
     )
     def _invoke_chain(self, chain, inputs):
-        """Zinciri çalıştırır, hata varsa retry devreye girer."""
         return chain.invoke(inputs)
 
-    def generate_viral_tweet(self, title: str, content: str, url: str, source: str):
+    def generate_viral_tweet(self, title: str, content: str, url: str, source: str, category: str = "GENERAL"):
+        # Kategori talimatını al, bilinmeyen kategori gelirse GENERAL kullan
+        category_instruction = CATEGORY_INSTRUCTIONS.get(category, CATEGORY_INSTRUCTIONS["GENERAL"])
+
+        # Ana prompt iskeleti ve algoritma kuralları değişmiyor
         template = """
         You are an algorithm-aware Social Media Strategist for a tech news account.
+
+        CATEGORY CONTEXT:
+        {category_instruction}
 
         CRITICAL LANGUAGE REQUIREMENT:
         - The output MUST be 100% in Turkish.
@@ -79,7 +104,7 @@ class GeminiService:
 
         prompt = PromptTemplate(
             template=template,
-            input_variables=["source", "title", "content", "url"],
+            input_variables=["source", "title", "content", "url", "category_instruction"],
             partial_variables={"format_instructions": self.parser.get_format_instructions()}
         )
 
@@ -89,5 +114,6 @@ class GeminiService:
             "source": source,
             "title": title,
             "content": content or "Detaylar linkte.",
-            "url": url
+            "url": url,
+            "category_instruction": category_instruction,
         })

@@ -30,7 +30,8 @@ async def generate_tweet_endpoint(request: TweetRequest):
         title=request.title,
         content=request.content,
         url=request.url,
-        source=request.source
+        source=request.source,
+        category=request.category,
     )
     
     return TweetResponse(
