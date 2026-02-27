@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 // NewsCategory haberin türünü belirtir
 type NewsCategory string
 
@@ -15,4 +17,5 @@ type NewsItem struct {
 	Link        string
 	Source      string
 	Category    NewsCategory // AI bu alana göre prompt seçecek
+	PublishedAt time.Time
 }

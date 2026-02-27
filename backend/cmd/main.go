@@ -30,26 +30,55 @@ func main() {
 	go tgBot.ListenForApproval()
 	fmt.Println("Telegram Onay Servisi Aktif!")
 
-	newsChannel := make(chan models.NewsItem, 100)
-	sc := scraper.NewRSSScraper(cache, newsChannel, cfg.MaxNewsPerSource)
+	// İki ayrı kanal: BREAKING için öncelikli, diğerleri için normal
+	breakingChannel := make(chan models.NewsItem, 50)
+	normalChannel := make(chan models.NewsItem, 100)
 
-	// Rate limiter: 3 saniyede 1 istek → dakikada max 20 (Gemini limitinin altında)
+	sc := scraper.NewRSSScraper(cache, breakingChannel, normalChannel, cfg.MaxNewsPerSource)
+
+	// Rate limiter: 3 saniyede 1 istek
 	limiter := rate.NewLimiter(rate.Every(3*time.Second), 1)
 
-	// Worker
+	// Priority Worker: BREAKING haberleri MUTLAKA öncelikli işlenir
 	go func() {
-		for item := range newsChannel {
-			limiter.Wait(context.Background())
-			middleware.RecoveryWrapper("Worker İşlemi", func() {
-				processNews(item, aiClient, tgBot)
-			})
+		for {
+			// ÖNCE breaking kanalını non-blocking kontrol et
+			select {
+			case item := <-breakingChannel:
+				limiter.Wait(context.Background())
+				middleware.RecoveryWrapper("Breaking News Worker", func() {
+					processNews(item, aiClient, tgBot)
+				})
+				continue // Döngünün başına dön, tekrar breaking kontrol et
+			default:
+				// Breaking kanalda bir şey yok, normal kanala bak
+			}
+
+			// Breaking yoksa normal kanala bak
+			select {
+			case item := <-breakingChannel:
+				// Normal kanalı beklerken breaking geldi, onu önceliklendir
+				limiter.Wait(context.Background())
+				middleware.RecoveryWrapper("Breaking News Worker", func() {
+					processNews(item, aiClient, tgBot)
+				})
+
+			case item := <-normalChannel:
+				limiter.Wait(context.Background())
+				middleware.RecoveryWrapper("Normal News Worker", func() {
+					processNews(item, aiClient, tgBot)
+				})
+
+			case <-time.After(100 * time.Millisecond):
+				// Kısa süre bekle, CPU'yu meşgul etme
+				continue
+			}
 		}
 	}()
 
-	fmt.Println("Worker Başlatıldı! (Rate Limit: 3sn/istek)")
+	fmt.Println("Priority Worker Başlatıldı! (Breaking > Normal)")
 
 	// Her kaynak için ayrı goroutine başlatıyoruz
-	// Her kaynak kendi Interval'ına göre çalışır
 	for _, source := range cfg.RSSSources {
 		src := source // closure için kopyala
 		go func() {
@@ -70,16 +99,50 @@ func main() {
 }
 
 func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.ApprovalBot) {
-	fmt.Printf("[%s] İşleniyor: %s\n", item.Category, item.Title)
+	// Yayınlanma saatini hesapla (eğer varsa)
+	publishedTime := ""
+	if !item.PublishedAt.IsZero() {
+		now := time.Now()
+		diff := now.Sub(item.PublishedAt)
 
-	response, err := aiClient.GenerateTweet(item.Title, item.Description, item.Link, item.Source, string(item.Category))
+		if diff < 5*time.Minute {
+			publishedTime = "🔴 ŞU AN" // Çok yeni
+		} else if diff < 30*time.Minute {
+			publishedTime = fmt.Sprintf("⏱️ %d dk önce", int(diff.Minutes()))
+		} else if diff < 2*time.Hour {
+			publishedTime = fmt.Sprintf("🕐 %d saat önce", int(diff.Hours()))
+		} else {
+			publishedTime = item.PublishedAt.Format("15:04")
+		}
+	}
+
+	fmt.Printf("[%s] İşleniyor (%s): %s\n", item.Category, publishedTime, item.Title)
+
+	response, err := aiClient.GenerateTweet(item.Title, item.Description, item.Link, item.Source, string(item.Category), item.PublishedAt)
 	if err != nil {
 		fmt.Printf("AI Hatası (%s): %v\n", item.Title, err)
 		return
 	}
 
-	err = tgBot.RequestApproval(response.Tweet, response.Reply, item.Source, string(item.Category))
+	//AI response'unu kontrol et
+	if response.Tweet == "" {
+		fmt.Printf("AI boş tweet döndü: %s\n", item.Title)
+		return
+	}
+
+	fmt.Printf("AI cevap aldı - Tweet: %s... | Reply: %s...\n",
+		response.Tweet[:min(30, len(response.Tweet))],
+		response.Reply[:min(30, len(response.Reply))])
+
+	err = tgBot.RequestApproval(response.Tweet, response.Reply, item.Source, string(item.Category), publishedTime)
 	if err != nil {
 		fmt.Printf("Telegram Hatası: %v\n", err)
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

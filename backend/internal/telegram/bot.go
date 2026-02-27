@@ -3,6 +3,7 @@ package telegram
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -34,18 +35,54 @@ func categoryLabel(category string) string {
 	}
 }
 
-func (b *ApprovalBot) RequestApproval(tweet, reply, source, category string) error {
+// ✅ Markdown özel karakterlerini escape et
+func escapeMarkdown(text string) string {
+	replacer := strings.NewReplacer(
+		"_", "\\_",
+		"*", "\\*",
+		"[", "\\[",
+		"]", "\\]",
+		"(", "\\(",
+		")", "\\)",
+		"~", "\\~",
+		"`", "\\`",
+		">", "\\>",
+		"#", "\\#",
+		"+", "\\+",
+		"-", "\\-",
+		"=", "\\=",
+		"|", "\\|",
+		"{", "\\{",
+		"}", "\\}",
+		".", "\\.",
+		"!", "\\!",
+	)
+	return replacer.Replace(text)
+}
+
+func (b *ApprovalBot) RequestApproval(tweet, reply, source, category, publishedTime string) error {
+	// Yayınlanma zamanı varsa ekle
+	timeInfo := ""
+	if publishedTime != "" {
+		timeInfo = fmt.Sprintf("\n*⏰ Yayınlanma:* %s", escapeMarkdown(publishedTime))
+	}
+
+	// Tweet ve reply içeriğini escape et
+	safeTweet := escapeMarkdown(tweet)
+	safeReply := escapeMarkdown(reply)
+	safeSource := escapeMarkdown(source)
+
 	text := fmt.Sprintf(
 		"%s\n\n"+
-			"*Kaynak:* %s\n\n"+
+			"*Kaynak:* %s%s\n\n"+
 			"*📝 Tweet:*\n%s\n\n"+
-			"*🔗 Yanıt (Link):*\n%s\n\n"+
+			"*🔗 Yanıt \\(Link\\):*\n%s\n\n"+
 			"Onaylıyor musun?",
-		categoryLabel(category), source, tweet, reply,
+		categoryLabel(category), safeSource, timeInfo, safeTweet, safeReply,
 	)
 
 	msg := tgbotapi.NewMessage(b.ChatID, text)
-	msg.ParseMode = "Markdown"
+	msg.ParseMode = "MarkdownV2" // ✅ MarkdownV2 kullan
 	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("✅ Onayla", "approve"),
@@ -54,7 +91,14 @@ func (b *ApprovalBot) RequestApproval(tweet, reply, source, category string) err
 	)
 
 	_, err := b.Bot.Send(msg)
-	return err
+	if err != nil {
+		// Hata detayını logla
+		fmt.Printf("Telegram Gönderim Hatası: %v\nMesaj: %s\n", err, text)
+		return err
+	}
+
+	fmt.Printf("Telegram'a gönderildi: %s\n", tweet[:min(50, len(tweet))])
+	return nil
 }
 
 func (b *ApprovalBot) ListenForApproval() {
@@ -71,17 +115,24 @@ func (b *ApprovalBot) ListenForApproval() {
 		b.Bot.Request(tgbotapi.NewCallback(callback.ID, "İşlem yapılıyor..."))
 
 		if callback.Data == "approve" {
-			newText := callback.Message.Text + "\n\n✅ *ONAYLANDI VE PAYLAŞILDI!*"
+			newText := callback.Message.Text + "\n\n✅ *ONAYLANDI VE PAYLAŞILDI\\!*"
 			editMsg := tgbotapi.NewEditMessageText(b.ChatID, callback.Message.MessageID, newText)
-			editMsg.ParseMode = "Markdown"
+			editMsg.ParseMode = "MarkdownV2"
 			b.Bot.Send(editMsg)
 			fmt.Println("🚀 Tweet onaylandı.")
 		} else if callback.Data == "reject" {
-			newText := callback.Message.Text + "\n\n❌ *REDDEDİLDİ.*"
+			newText := callback.Message.Text + "\n\n❌ *REDDEDİLDİ\\.*"
 			editMsg := tgbotapi.NewEditMessageText(b.ChatID, callback.Message.MessageID, newText)
-			editMsg.ParseMode = "Markdown"
+			editMsg.ParseMode = "MarkdownV2"
 			b.Bot.Send(editMsg)
 			fmt.Println("🗑️ İçerik reddedildi.")
 		}
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

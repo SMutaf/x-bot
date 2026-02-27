@@ -12,18 +12,20 @@ import (
 )
 
 type RSSScraper struct {
-	Parser       *gofeed.Parser
-	Cache        *dedup.Deduplicator
-	Out          chan<- models.NewsItem
-	MaxPerSource int
+	Parser          *gofeed.Parser
+	Cache           *dedup.Deduplicator
+	BreakingChannel chan<- models.NewsItem // BREAKING için öncelikli kanal
+	NormalChannel   chan<- models.NewsItem // Diğer haberler için normal kanal
+	MaxPerSource    int
 }
 
-func NewRSSScraper(cache *dedup.Deduplicator, out chan<- models.NewsItem, maxPerSource int) *RSSScraper {
+func NewRSSScraper(cache *dedup.Deduplicator, breakingCh chan<- models.NewsItem, normalCh chan<- models.NewsItem, maxPerSource int) *RSSScraper {
 	return &RSSScraper{
-		Parser:       gofeed.NewParser(),
-		Cache:        cache,
-		Out:          out,
-		MaxPerSource: maxPerSource,
+		Parser:          gofeed.NewParser(),
+		Cache:           cache,
+		BreakingChannel: breakingCh,
+		NormalChannel:   normalCh,
+		MaxPerSource:    maxPerSource,
 	}
 }
 
@@ -54,15 +56,34 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 			continue
 		}
 
-		s.Out <- models.NewsItem{
+		// Yayınlanma zamanını al (RSS'den)
+		var publishedAt time.Time
+		if item.PublishedParsed != nil {
+			publishedAt = *item.PublishedParsed
+		} else if item.UpdatedParsed != nil {
+			publishedAt = *item.UpdatedParsed
+		} else {
+			publishedAt = time.Now() // RSS'de zaman yoksa şimdiki zamanı kullan
+		}
+
+		newsItem := models.NewsItem{
 			Title:       item.Title,
 			Description: item.Description,
 			Link:        item.Link,
 			Source:      feed.Title,
-			Category:    source.Category, // Kategori buradan geliyor
+			Category:    source.Category,
+			PublishedAt: publishedAt,
 		}
 
-		fmt.Printf("[%s] Haber kanala gönderildi [%d/%d]: %s\n", source.Category, count+1, s.MaxPerSource, item.Title)
+		//BREAKING ise öncelikli kanala, değilse normal kanala gönder
+		if source.Category == models.CategoryBreaking {
+			s.BreakingChannel <- newsItem
+			fmt.Printf("[BREAKING] Öncelikli kanala gönderildi [%d/%d]: %s\n", count+1, s.MaxPerSource, item.Title)
+		} else {
+			s.NormalChannel <- newsItem
+			fmt.Printf("[%s] Normal kanala gönderildi [%d/%d]: %s\n", source.Category, count+1, s.MaxPerSource, item.Title)
+		}
+
 		count++
 	}
 }

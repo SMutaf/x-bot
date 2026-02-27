@@ -9,11 +9,12 @@ import (
 )
 
 type TweetRequest struct {
-	Title    string `json:"title"`
-	Content  string `json:"content"`
-	URL      string `json:"url"`
-	Source   string `json:"source"`
-	Category string `json:"category"` // BREAKING / TECH / GENERAL
+	Title       string     `json:"title"`
+	Content     string     `json:"content"`
+	URL         string     `json:"url"`
+	Source      string     `json:"source"`
+	Category    string     `json:"category"`
+	PublishedAt *time.Time `json:"published_at,omitempty"`
 }
 
 type TweetResponse struct {
@@ -36,13 +37,19 @@ func NewClient(apiURL string) *Client {
 	}
 }
 
-func (c *Client) GenerateTweet(title, content, url, source, category string) (*TweetResponse, error) {
+func (c *Client) GenerateTweet(title, content, url, source, category string, publishedAt time.Time) (*TweetResponse, error) {
+	var pubAt *time.Time
+	if !publishedAt.IsZero() {
+		pubAt = &publishedAt
+	}
+
 	reqBody := TweetRequest{
-		Title:    title,
-		Content:  content,
-		URL:      url,
-		Source:   source,
-		Category: category,
+		Title:       title,
+		Content:     content,
+		URL:         url,
+		Source:      source,
+		Category:    category,
+		PublishedAt: pubAt,
 	}
 
 	jsonValue, _ := json.Marshal(reqBody)
