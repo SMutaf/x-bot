@@ -7,28 +7,19 @@ from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from typing import Optional
+import re
 
 load_dotenv()
 
-# Kategori bazlı ton talimatları
-CATEGORY_INSTRUCTIONS = {
-    "BREAKING": (
-        "This is BREAKING NEWS. "
-        "Be extremely concise and punchy. "
-        "Impact statement must feel urgent. "
-        "Question must demand immediate opinion."
-    ),
-    "TECH": (
-        "This is a technology deep-dive. "
-        "Impact statement should highlight technical significance. "
-        "Question should invite expert discussion."
-    ),
-    "GENERAL": (
-        "This is a general tech news item. "
-        "Balance informativeness with engagement. "
-        "Question should be broadly relatable."
-    ),
-}
+# Hassas kelimeler - ciddi muamele gerektiren konular
+SENSITIVE_KEYWORDS = [
+    "öldü", "ölü", "hayatını kaybetti", "şehit", "vefat", "ölüm",
+    "saldırı", "bomba", "füze", "savaş", "çatışma", "terör",
+    "deprem", "tsunami", "afet", "felaket", "yangın",
+    "taciz", "tecavüz", "istismar", "şiddet", "cinayet",
+    "kaza", "yaralı", "ağır yaralı", "hayatını kaybetmek",
+    "kill", "death", "dead", "attack", "bombing", "war"
+]
 
 class TweetOutput(BaseModel):
     tweet: str = Field(description="Viral, engaging tweet content in Turkish without links.")
@@ -47,6 +38,86 @@ class GeminiService:
         )
         self.parser = JsonOutputParser(pydantic_object=TweetOutput)
 
+    def _detect_news_type(self, title: str, content: str, category: str) -> str:
+        """
+        Haberin türünü tespit et:
+        - TRAGEDY: Ölüm, savaş, terör, kaza, afet
+        - BREAKING_SERIOUS: Ciddi politik/ekonomik gelişme
+        - TECH_LAUNCH: Ürün lansman, yeni teknoloji
+        - GENERAL_NEWS: Normal haber
+        """
+        text = (title + " " + content).lower()
+        
+        # Hassas kelime kontrolü
+        for keyword in SENSITIVE_KEYWORDS:
+            if keyword in text:
+                return "TRAGEDY"
+        
+        # Breaking + ciddi konular
+        if category == "BREAKING":
+            if any(word in text for word in ["başkan", "cumhurbaşkanı", "minister", "president", "hükümet"]):
+                return "BREAKING_SERIOUS"
+            return "BREAKING_SERIOUS"
+        
+        # Teknoloji lansmanları
+        if category == "TECH":
+            if any(word in text for word in ["tanıttı", "duyurdu", "çıktı", "launch", "announce", "reveal"]):
+                return "TECH_LAUNCH"
+        
+        return "GENERAL_NEWS"
+
+    def _get_prompt_strategy(self, news_type: str, category: str, time_context: str) -> dict:
+        """
+        Haber türüne göre prompt stratejisi belirle
+        """
+        
+        if news_type == "TRAGEDY":
+            return {
+                "tone": "EXTREMELY SERIOUS. NO emojis. NO questions. NO engagement tricks.",
+                "structure": "State the facts clearly and respectfully. Period. No commentary.",
+                "emoji_rule": "ZERO emojis. Not even 🔴. Use text only: SON DAKİKA or BREAKING.",
+                "question_rule": "NO questions. NO 'Ne düşünüyorsunuz?'. Just facts.",
+                "example": """
+Good: "SON DAKİKA | İran'da okul saldırısında 15 öğrenci hayatını kaybetti. (Al Jazeera)"
+Bad: "İran'da trajedi 😢 Okul saldırısı... Ne düşünüyorsunuz?"
+                """
+            }
+        
+        elif news_type == "BREAKING_SERIOUS":
+            return {
+                "tone": "Urgent but neutral. Maximum 1 red dot emoji (🔴). No playful tone.",
+                "structure": "Lead with action. Add context. No questions unless genuinely important.",
+                "emoji_rule": "Only 🔴 for SON DAKİKA. No other emojis.",
+                "question_rule": "Avoid questions. If used, make it rhetorical and serious.",
+                "example": """
+Good: "🔴 SON DAKİKA | Merkez Bankası faiz oranını %45'e yükseltti."
+Bad: "Merkez Bankası faiz artırdı! 🚀 Bu karar ekonomiyi nasıl etkiler?"
+                """
+            }
+        
+        elif news_type == "TECH_LAUNCH":
+            return {
+                "tone": "Excited but informative. Max 2 tech-related emojis.",
+                "structure": "Highlight innovation → Key specs → Optional question.",
+                "emoji_rule": "Tech emojis OK: 🚀 💻 📱 ⚡ (max 2)",
+                "question_rule": "Questions OK for tech: 'Almayı düşünür müsünüz?', 'Hangisi daha iyi?'",
+                "example": """
+Good: "iPhone 17 tanıtıldı! 🚀 6.1 inç OLED, A20 çip, 1TB depolama. Almayı düşünür müsünüz?"
+Bad: "iPhone 17 geldi işte! 😍🔥💯 Sizce bu telefon efsane mi olacak?"
+                """
+            }
+        
+        else:  # GENERAL_NEWS
+            return {
+                "tone": "Balanced. Informative. Slightly engaging.",
+                "structure": "Lead → Context → Light question if appropriate.",
+                "emoji_rule": "Max 1-2 contextual emojis.",
+                "question_rule": "Questions OK but not mandatory.",
+                "example": """
+Good: "Türkiye'de elektrikli araç satışları %40 arttı. Altyapı yeterli mi?"
+                """
+            }
+
     def _calculate_time_context(self, published_at: Optional[datetime]) -> str:
         """
         Haberin ne kadar yeni olduğunu hesaplar ve prompt'a eklenecek bağlamı döner.
@@ -63,13 +134,13 @@ class GeminiService:
         minutes = int(diff.total_seconds() / 60)
         
         if minutes < 5:
-            return "\n🔥 ULTRA-FRESH NEWS (< 5 minutes old): Use present tense, emphasize 'breaking right now'."
+            return "\n🔥 ULTRA-FRESH NEWS (< 5 minutes old): Use present tense, emphasize urgency."
         elif minutes < 30:
-            return f"\n⚡ FRESH NEWS ({minutes} minutes old): Maintain urgency, use recent past tense."
+            return f"\n⚡ FRESH NEWS ({minutes} minutes old): Maintain urgency, recent past tense."
         elif minutes < 120:
             return f"\n📰 RECENT NEWS ({minutes // 60} hours old): Balance timeliness with context."
         else:
-            return "\n📚 Older news: Focus on evergreen value, not urgency."
+            return "\n📚 Older news: Focus on evergreen value."
 
     @retry(
         stop=stop_after_attempt(3),
@@ -89,48 +160,51 @@ class GeminiService:
         category: str = "GENERAL",
         published_at: Optional[datetime] = None 
     ):
-        # Kategori talimatını al
-        category_instruction = CATEGORY_INSTRUCTIONS.get(category, CATEGORY_INSTRUCTIONS["GENERAL"])
+        # 1. Haber türünü tespit et
+        news_type = self._detect_news_type(title, content, category)
         
-        # Zaman bağlamını hesapla
+        # 2. Zaman bağlamını hesapla
         time_context = self._calculate_time_context(published_at)
+        
+        # 3. Prompt stratejisini al
+        strategy = self._get_prompt_strategy(news_type, category, time_context)
 
+        # 4. Dinamik prompt oluştur
         template = """
-        You are an algorithm-aware Social Media Strategist for a tech news account.
+        You are a CONTEXT-AWARE Social Media Strategist for a professional news account.
 
-        CATEGORY CONTEXT:
-        {category_instruction}
+        NEWS TYPE: {news_type}
         {time_context}
 
-        CRITICAL LANGUAGE REQUIREMENT:
-        - The output MUST be 100% in Turkish.
-        - Do NOT use English words unless proper nouns.
-        - Output only Turkish text.
-
-        Your objective is to create a high-engagement Twitter (X) post 
-        while maintaining honesty and credibility.
-
-        OPTIMIZATION STRATEGY:
-        - Encourage meaningful replies
-        - Increase dwell time
-        - Improve retweet probability
-        - Avoid clickbait or misleading tone
-
-        HARD RULES:
-        1. Main tweet under 280 characters.
-        2. NEVER include link in main tweet.
-        3. Max 2 emojis.
-        4. Be factually aligned.
+        TONE & STYLE REQUIREMENTS:
+        {tone_instruction}
 
         STRUCTURE:
-        - Impact statement
-        - Why it matters
-        - Open-ended question
+        {structure_instruction}
+
+        EMOJI RULES:
+        {emoji_rule}
+
+        QUESTION RULES:
+        {question_rule}
+
+        REFERENCE EXAMPLE:
+        {example}
+
+        CRITICAL LANGUAGE REQUIREMENT:
+        - Output MUST be 100% in Turkish (except proper nouns)
+        - Use natural, native Turkish phrasing
+
+        UNIVERSAL HARD RULES:
+        1. Main tweet under 280 characters
+        2. NEVER include link in main tweet
+        3. Be factually accurate
+        4. Match the tone to the content severity
 
         NEWS DATA:
         - Source: {source}
         - Title: {title}
-        - Content Snippet: {content}
+        - Content: {content}
         - URL: {url}
 
         OUTPUT FORMAT:
@@ -139,17 +213,34 @@ class GeminiService:
 
         prompt = PromptTemplate(
             template=template,
-            input_variables=["source", "title", "content", "url", "category_instruction", "time_context"],
+            input_variables=[
+                "news_type",
+                "time_context", 
+                "tone_instruction",
+                "structure_instruction",
+                "emoji_rule",
+                "question_rule",
+                "example",
+                "source", 
+                "title", 
+                "content", 
+                "url"
+            ],
             partial_variables={"format_instructions": self.parser.get_format_instructions()}
         )
 
         chain = prompt | self.llm | self.parser
 
         return self._invoke_chain(chain, {
+            "news_type": news_type,
+            "time_context": time_context,
+            "tone_instruction": strategy["tone"],
+            "structure_instruction": strategy["structure"],
+            "emoji_rule": strategy["emoji_rule"],
+            "question_rule": strategy["question_rule"],
+            "example": strategy["example"],
             "source": source,
             "title": title,
             "content": content or "Detaylar linkte.",
             "url": url,
-            "category_instruction": category_instruction,
-            "time_context": time_context, 
         })
