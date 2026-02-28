@@ -30,7 +30,7 @@ func main() {
 	go tgBot.ListenForApproval()
 	fmt.Println("Telegram Onay Servisi Aktif!")
 
-	// ✅ İki ayrı kanal: BREAKING için öncelikli, diğerleri için normal
+	// İki ayrı kanal: BREAKING için öncelikli, diğerleri için normal
 	// Buffer size artırıldı (daha fazla kaynak için)
 	breakingChannel := make(chan models.NewsItem, 100) // 50 → 100
 	normalChannel := make(chan models.NewsItem, 200)   // 100 → 200
@@ -40,7 +40,7 @@ func main() {
 	// Rate limiter: 3 saniyede 1 istek
 	limiter := rate.NewLimiter(rate.Every(3*time.Second), 1)
 
-	// ✅ Priority Worker: BREAKING haberleri MUTLAKA öncelikli işlenir
+	// Priority Worker: BREAKING haberleri MUTLAKA öncelikli işlenir
 	go func() {
 		for {
 			// ÖNCE breaking kanalını non-blocking kontrol et
@@ -100,7 +100,7 @@ func main() {
 }
 
 func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.ApprovalBot) {
-	// ✅ Yayınlanma saatini hesapla (eğer varsa)
+	//  Yayınlanma saatini hesapla (eğer varsa)
 	publishedTime := ""
 	if !item.PublishedAt.IsZero() {
 		now := time.Now()
@@ -109,9 +109,9 @@ func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.Appr
 		if diff < 5*time.Minute {
 			publishedTime = "🔴 ŞU AN" // Çok yeni
 		} else if diff < 30*time.Minute {
-			publishedTime = fmt.Sprintf("⏱️ %d dk önce", int(diff.Minutes()))
+			publishedTime = fmt.Sprintf("%d dk önce", int(diff.Minutes()))
 		} else if diff < 2*time.Hour {
-			publishedTime = fmt.Sprintf("🕐 %d saat önce", int(diff.Hours()))
+			publishedTime = fmt.Sprintf("%d saat önce", int(diff.Hours()))
 		} else {
 			publishedTime = item.PublishedAt.Format("15:04")
 		}
@@ -121,23 +121,23 @@ func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.Appr
 
 	response, err := aiClient.GenerateTweet(item.Title, item.Description, item.Link, item.Source, string(item.Category), item.PublishedAt)
 	if err != nil {
-		fmt.Printf("❌ AI Hatası (%s): %v\n", item.Title, err)
+		fmt.Printf("AI Hatası (%s): %v\n", item.Title, err)
 		return
 	}
 
-	// ✅ AI response'unu kontrol et
+	// AI response'unu kontrol et
 	if response.Tweet == "" {
-		fmt.Printf("⚠️ AI boş tweet döndü: %s\n", item.Title)
+		fmt.Printf("AI boş tweet döndü: %s\n", item.Title)
 		return
 	}
 
-	fmt.Printf("✅ AI cevap aldı - Tweet: %s... | Reply: %s...\n",
+	fmt.Printf("AI cevap aldı - Tweet: %s... | Reply: %s...\n",
 		response.Tweet[:min(30, len(response.Tweet))],
 		response.Reply[:min(30, len(response.Reply))])
 
 	err = tgBot.RequestApproval(response.Tweet, response.Reply, item.Source, string(item.Category), publishedTime)
 	if err != nil {
-		fmt.Printf("❌ Telegram Hatası: %v\n", err)
+		fmt.Printf("Telegram Hatası: %v\n", err)
 	}
 }
 
