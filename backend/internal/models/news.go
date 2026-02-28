@@ -9,6 +9,9 @@ const (
 	CategoryBreaking NewsCategory = "BREAKING" // Son dakika - kısa, çarpıcı
 	CategoryTech     NewsCategory = "TECH"     // Teknoloji haberi - bilgilendirici
 	CategoryGeneral  NewsCategory = "GENERAL"  // Genel haber
+	CategoryEconomy  NewsCategory = "ECONOMY"  // Ekonomi & finans
+	CategorySports   NewsCategory = "SPORTS"   // Spor haberleri
+	CategoryScience  NewsCategory = "SCIENCE"  // Bilim & uzay
 )
 
 type NewsItem struct {
