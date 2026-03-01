@@ -169,9 +169,17 @@ Good: "Türkiye'de elektrikli araç satışları %40 arttı. Altyapı yeterli mi
         # 3. Prompt stratejisini al
         strategy = self._get_prompt_strategy(news_type, category, time_context)
 
-        # 4. Dinamik prompt oluştur
+        # 4. YENİ TELİF KORUMALI DİNAMİK PROMPT
         template = """
         You are a CONTEXT-AWARE Social Media Strategist for a professional news account.
+
+         CRITICAL COPYRIGHT COMPLIANCE:
+        - NEVER copy the headline verbatim
+        - NEVER copy the first paragraph
+        - NEVER use exact quotes longer than 5 words
+        - ALWAYS rewrite in your own words
+        - ALWAYS add original analysis/context
+        - This is TRANSFORMATIVE USE, not reproduction
 
         NEWS TYPE: {news_type}
         {time_context}
@@ -188,24 +196,56 @@ Good: "Türkiye'de elektrikli araç satışları %40 arttı. Altyapı yeterli mi
         QUESTION RULES:
         {question_rule}
 
-        REFERENCE EXAMPLE:
-        {example}
+        COPYRIGHT-SAFE REWRITING RULES:
+        1. Read the headline → Understand the core fact
+        2. REWRITE completely in different words
+        3. Add your own angle/context
+        4. Make it conversational, not journalistic
+        5. If the news is "X announced Y", write "Y geldi! X duyurdu." (different structure)
+
+        EXAMPLES OF TRANSFORMATIVE REWRITING:
+
+        ❌ BAD (Too similar to source):
+        Source: "Apple announces iPhone 17 with 200MP camera"
+        Tweet: "Apple iPhone 17'yi 200MP kamerayla duyurdu"
+        Problem: Nearly identical, just translated
+
+        ✅ GOOD (Transformative):
+        Source: "Apple announces iPhone 17 with 200MP camera"
+        Tweet: "200 megapiksel kamera geliyor! iPhone 17 tanıtıldı."
+        Why: Different structure, adds excitement, original phrasing
+
+        ❌ BAD (Too similar):
+        Source: "Merkez Bankası faiz oranını %45'e yükseltti"
+        Tweet: "TCMB faiz oranını yüzde 45'e yükseltti"
+        Problem: Just rephrased minimally
+
+        ✅ GOOD (Transformative):
+        Source: "Merkez Bankası faiz oranını %45'e yükseltti"
+        Tweet: "Faizde sert adım! TCMB %45 kararını açıkladı."
+        Why: Adds interpretation, different angle
 
         CRITICAL LANGUAGE REQUIREMENT:
         - Output MUST be 100% in Turkish (except proper nouns)
         - Use natural, native Turkish phrasing
+        - Do NOT translate word-by-word
 
         UNIVERSAL HARD RULES:
         1. Main tweet under 280 characters
         2. NEVER include link in main tweet
-        3. Be factually accurate
+        3. Be factually accurate but USE YOUR OWN WORDS
         4. Match the tone to the content severity
 
-        NEWS DATA:
+        SOURCE NEWS DATA:
         - Source: {source}
-        - Title: {title}
-        - Content: {content}
+        - Original Headline: {title}
+        - Original Content: {content}
         - URL: {url}
+
+        IMPORTANT: The reply field MUST include:
+        - Source attribution: "{source} haberi:"
+        - The link: {url}
+        - Relevant hashtags
 
         OUTPUT FORMAT:
         {format_instructions}
@@ -231,7 +271,7 @@ Good: "Türkiye'de elektrikli araç satışları %40 arttı. Altyapı yeterli mi
 
         chain = prompt | self.llm | self.parser
 
-        return self._invoke_chain(chain, {
+        result = self._invoke_chain(chain, {
             "news_type": news_type,
             "time_context": time_context,
             "tone_instruction": strategy["tone"],
@@ -244,3 +284,9 @@ Good: "Türkiye'de elektrikli araç satışları %40 arttı. Altyapı yeterli mi
             "content": content or "Detaylar linkte.",
             "url": url,
         })
+        
+        # Post-processing: Kaynak belirtme kontrolü
+        if source.lower() not in result["reply"].lower():
+            result["reply"] = f"{source} haberi: {result['reply']}"
+        
+        return result
