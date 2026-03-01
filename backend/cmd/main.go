@@ -37,7 +37,6 @@ func main() {
 
 	sc := scraper.NewRSSScraper(cache, breakingChannel, normalChannel, cfg.MaxNewsPerSource)
 
-	// Virality Scorer ve Filter
 	viralityScorer := virality.NewViralityScorer()
 	newsFilter := filter.NewNewsFilter(viralityScorer, 30) // 30 altındaki skorları geçirme
 
@@ -103,11 +102,20 @@ func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.Appr
 		return
 	}
 
+	// Saat bazlı gönderim (BREAKING her zaman, diğerleri belirli saatlerde)
+	now := time.Now()
+	hour := now.Hour()
+	if item.Category == models.CategoryTech || item.Category == models.CategoryGeneral {
+		if !((hour >= 8 && hour < 10) || (hour >= 12 && hour < 14) || (hour >= 18 && hour <= 21)) {
+			fmt.Printf("⏳ Haber saat filtresine takıldı, gönderilmiyor: %s\n", item.Title)
+			return
+		}
+	}
+
+	// Yayınlanma zamanı etiketi
 	publishedTime := ""
 	if !item.PublishedAt.IsZero() {
-		now := time.Now()
-		diff := now.Sub(item.PublishedAt)
-
+		diff := time.Since(item.PublishedAt)
 		switch {
 		case diff < 5*time.Minute:
 			publishedTime = "🔴 ŞU AN"
