@@ -14,7 +14,7 @@ import (
 type RSSSource struct {
 	URL      string
 	Category models.NewsCategory
-	Interval time.Duration // Bu kaynağın tarama sıklığı
+	Interval time.Duration
 }
 
 type Config struct {
@@ -36,10 +36,8 @@ func LoadConfig() *Config {
 	return &Config{
 		RSSSources: []RSSSource{
 			// ========================================
-			// ULUSLARARASI HABER AJANSLARI (BREAKING)
+			// BREAKING
 			// ========================================
-			// En hızlı breaking news kaynakları - Her 2 dakikada bir tara
-
 			{
 				URL:      "https://feeds.bbci.co.uk/news/world/rss.xml",
 				Category: models.CategoryBreaking,
@@ -50,39 +48,12 @@ func LoadConfig() *Config {
 				Category: models.CategoryBreaking,
 				Interval: 2 * time.Minute,
 			},
-			{
-				URL:      "https://www.aljazeera.com/xml/rss/all.xml",
-				Category: models.CategoryBreaking,
-				Interval: 2 * time.Minute,
-			},
 
 			// ========================================
-			// TEKNOLOJİ HABERLERİ (NORMAL)
+			// TEKNOLOJİ
 			// ========================================
-			// Teknoloji odaklı kaynaklar - Her 10 dakikada bir tara
-
 			{
 				URL:      "https://www.webtekno.com/rss.xml",
-				Category: models.CategoryTech,
-				Interval: 10 * time.Minute,
-			},
-			{
-				URL:      "https://shiftdelete.net/feed",
-				Category: models.CategoryTech,
-				Interval: 10 * time.Minute,
-			},
-			{
-				URL:      "https://www.chip.com.tr/rss",
-				Category: models.CategoryTech,
-				Interval: 10 * time.Minute,
-			},
-			{
-				URL:      "https://www.technopat.net/feed/",
-				Category: models.CategoryTech,
-				Interval: 10 * time.Minute,
-			},
-			{
-				URL:      "https://feeds.feedburner.com/TechCrunch/",
 				Category: models.CategoryTech,
 				Interval: 10 * time.Minute,
 			},
@@ -93,15 +64,8 @@ func LoadConfig() *Config {
 			},
 
 			// ========================================
-			// TÜRKİYE GÜNDEM (GENEL)
+			// TÜRKİYE GÜNDEM
 			// ========================================
-			// Türkiye gündem haberleri - Her 5 dakikada bir tara
-
-			{
-				URL:      "https://www.aa.com.tr/tr/rss/default?cat=ekonomi",
-				Category: models.CategoryGeneral,
-				Interval: 5 * time.Minute,
-			},
 			{
 				URL:      "https://www.aa.com.tr/tr/rss/default?cat=turkiye",
 				Category: models.CategoryGeneral,
@@ -112,13 +76,6 @@ func LoadConfig() *Config {
 				Category: models.CategoryGeneral,
 				Interval: 5 * time.Minute,
 			},
-
-			// ========================================
-			// EKONOMİ & FİNANS (GENEL)
-			// ========================================
-			// Ekonomi, finans, kripto - Her 5 dakikada bir tara
-
-			// burası eksik KAYNAK BULUNMASI LAZIM
 		},
 		RedisAddr:        getEnv("REDIS_ADDR", "localhost:6379"),
 		TelegramToken:    os.Getenv("TELEGRAM_TOKEN"),
