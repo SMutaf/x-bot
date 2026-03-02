@@ -21,7 +21,7 @@ func NewApprovalBot(token string, chatID int64) *ApprovalBot {
 	return &ApprovalBot{Bot: bot, ChatID: chatID}
 }
 
-// Kategori emojisi ve etiketi
+// Kategori etiketi
 func categoryLabel(category string) string {
 	switch category {
 	case "BREAKING":
@@ -35,7 +35,7 @@ func categoryLabel(category string) string {
 	}
 }
 
-// ✅ Markdown özel karakterlerini escape et
+// MarkdownV2 escape
 func escapeMarkdown(text string) string {
 	replacer := strings.NewReplacer(
 		"_", "\\_",
@@ -60,44 +60,55 @@ func escapeMarkdown(text string) string {
 	return replacer.Replace(text)
 }
 
-func (b *ApprovalBot) RequestApproval(tweet, reply, source, category, publishedTime string) error {
-	// Yayınlanma zamanı varsa ekle
-	timeInfo := ""
-	if publishedTime != "" {
-		timeInfo = fmt.Sprintf("\n*⏰ Yayınlanma:* %s", escapeMarkdown(publishedTime))
+func (b *ApprovalBot) RequestApproval(tweet, link, source, category, publishedTime string) error {
+
+	// MESAJ → SADECE TWEET
+	safeTweet := escapeMarkdown(tweet)
+
+	tweetMsg := tgbotapi.NewMessage(b.ChatID, safeTweet)
+	tweetMsg.ParseMode = "MarkdownV2"
+
+	_, err := b.Bot.Send(tweetMsg)
+	if err != nil {
+		fmt.Printf("Tweet mesajı gönderilemedi: %v\n", err)
+		return err
 	}
 
-	// Tweet ve reply içeriğini escape et
-	safeTweet := escapeMarkdown(tweet)
-	safeReply := escapeMarkdown(reply)
-	safeSource := escapeMarkdown(source)
+	// MESAJ → META BİLGİLER + BUTONLAR
 
-	text := fmt.Sprintf(
+	safeSource := escapeMarkdown(source)
+	safeLink := escapeMarkdown(link)
+	safeTime := escapeMarkdown(publishedTime)
+
+	metaText := fmt.Sprintf(
 		"%s\n\n"+
-			"*Kaynak:* %s%s\n\n"+
-			"*📝 Tweet:*\n%s\n\n"+
-			"*🔗 Yanıt \\(Link\\):*\n%s\n\n"+
+			"*Kaynak:* %s\n"+
+			"*⏰ Yayınlanma:* %s\n"+
+			"*🔗 Link:*\n%s\n\n"+
 			"Onaylıyor musun?",
-		categoryLabel(category), safeSource, timeInfo, safeTweet, safeReply,
+		categoryLabel(category),
+		safeSource,
+		safeTime,
+		safeLink,
 	)
 
-	msg := tgbotapi.NewMessage(b.ChatID, text)
-	msg.ParseMode = "MarkdownV2" // ✅ MarkdownV2 kullan
-	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+	metaMsg := tgbotapi.NewMessage(b.ChatID, metaText)
+	metaMsg.ParseMode = "MarkdownV2"
+
+	metaMsg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("✅ Onayla", "approve"),
 			tgbotapi.NewInlineKeyboardButtonData("❌ Reddet", "reject"),
 		),
 	)
 
-	_, err := b.Bot.Send(msg)
+	_, err = b.Bot.Send(metaMsg)
 	if err != nil {
-		// Hata detayını logla
-		fmt.Printf("Telegram Gönderim Hatası: %v\nMesaj: %s\n", err, text)
+		fmt.Printf("Meta mesaj gönderilemedi: %v\n", err)
 		return err
 	}
 
-	fmt.Printf("Telegram'a gönderildi: %s\n", tweet[:min(50, len(tweet))])
+	fmt.Println("Telegram'a 2 ayrı mesaj gönderildi.")
 	return nil
 }
 
@@ -112,27 +123,28 @@ func (b *ApprovalBot) ListenForApproval() {
 		}
 
 		callback := update.CallbackQuery
+
 		b.Bot.Request(tgbotapi.NewCallback(callback.ID, "İşlem yapılıyor..."))
 
+		originalText := callback.Message.Text
+
+		var newText string
+
 		if callback.Data == "approve" {
-			newText := callback.Message.Text + "\n\n✅ *ONAYLANDI VE PAYLAŞILDI\\!*"
-			editMsg := tgbotapi.NewEditMessageText(b.ChatID, callback.Message.MessageID, newText)
-			editMsg.ParseMode = "MarkdownV2"
-			b.Bot.Send(editMsg)
+			newText = originalText + "\n\n✅ *ONAYLANDI VE PAYLAŞILDI\\!*"
 			fmt.Println("🚀 Tweet onaylandı.")
 		} else if callback.Data == "reject" {
-			newText := callback.Message.Text + "\n\n❌ *REDDEDİLDİ\\.*"
-			editMsg := tgbotapi.NewEditMessageText(b.ChatID, callback.Message.MessageID, newText)
-			editMsg.ParseMode = "MarkdownV2"
-			b.Bot.Send(editMsg)
+			newText = originalText + "\n\n❌ *REDDEDİLDİ\\.*"
 			fmt.Println("🗑️ İçerik reddedildi.")
 		}
-	}
-}
 
-func min(a, b int) int {
-	if a < b {
-		return a
+		editMsg := tgbotapi.NewEditMessageText(
+			b.ChatID,
+			callback.Message.MessageID,
+			newText,
+		)
+		editMsg.ParseMode = "MarkdownV2"
+
+		b.Bot.Send(editMsg)
 	}
-	return b
 }
