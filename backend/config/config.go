@@ -43,11 +43,11 @@ func LoadConfig() *Config {
 				Category: models.CategoryBreaking,
 				Interval: 2 * time.Minute,
 			},
-			{
+			/* 			{
 				URL:      "https://www.aa.com.tr/tr/rss/default?cat=guncel",
 				Category: models.CategoryBreaking,
 				Interval: 2 * time.Minute,
-			},
+			}, */
 
 			// ========================================
 			// TEKNOLOJİ
@@ -57,25 +57,25 @@ func LoadConfig() *Config {
 				Category: models.CategoryTech,
 				Interval: 10 * time.Minute,
 			},
-			{
+			/* {
 				URL:      "https://www.theverge.com/rss/index.xml",
 				Category: models.CategoryTech,
 				Interval: 10 * time.Minute,
-			},
+			}, */
 
 			// ========================================
 			// TÜRKİYE GÜNDEM
 			// ========================================
-			{
-				URL:      "https://www.aa.com.tr/tr/rss/default?cat=turkiye",
-				Category: models.CategoryGeneral,
-				Interval: 5 * time.Minute,
-			},
-			{
-				URL:      "https://www.hurriyet.com.tr/rss/anasayfa",
-				Category: models.CategoryGeneral,
-				Interval: 5 * time.Minute,
-			},
+			/* 			{
+			   				URL:      "https://www.aa.com.tr/tr/rss/default?cat=turkiye",
+			   				Category: models.CategoryGeneral,
+			   				Interval: 5 * time.Minute,
+			   			},
+			   			{
+			   				URL:      "https://www.hurriyet.com.tr/rss/anasayfa",
+			   				Category: models.CategoryGeneral,
+			   				Interval: 5 * time.Minute,
+			   			}, */
 		},
 		RedisAddr:        getEnv("REDIS_ADDR", "localhost:6379"),
 		TelegramToken:    os.Getenv("TELEGRAM_TOKEN"),

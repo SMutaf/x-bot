@@ -2,67 +2,206 @@ package filter
 
 import (
 	"strings"
+	"time"
 
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
-	"github.com/SMutaf/twitter-bot/backend/internal/virality"
 )
 
-// FilterOptions filtreleme için opsiyonlar
-type FilterOptions struct {
-	MinVirality    int
-	IncludeTech    bool
-	IncludeGeneral bool
-}
-
-// NewsFilter struct
 type NewsFilter struct {
-	scorer   *virality.ViralityScorer
-	MinScore int
+	BreakingThreshold int
+	NormalThreshold   int
 }
 
-func NewNewsFilter(vs *virality.ViralityScorer, minScore int) *NewsFilter {
+func NewNewsFilter(breaking int, normal int) *NewsFilter {
 	return &NewsFilter{
-		scorer:   virality.NewViralityScorer(),
-		MinScore: minScore,
+		BreakingThreshold: breaking,
+		NormalThreshold:   normal,
 	}
 }
 
-// FilterNews haberleri filtreler
-func (f *NewsFilter) FilterNews(news []models.NewsItem, opts FilterOptions) []models.NewsItem {
-	var result []models.NewsItem
-
-	for _, item := range news {
-		score := f.scorer.CalculateScore(item.Title, item.Description, item.Category)
-		if score < opts.MinVirality {
-			continue
-		}
-
-		if !opts.IncludeTech && item.Category == models.CategoryTech {
-			continue
-		}
-
-		if !opts.IncludeGeneral && item.Category == models.CategoryGeneral {
-			continue
-		}
-
-		result = append(result, item)
-	}
-
-	return result
+func contains(text string, word string) bool {
+	return strings.Contains(text, word)
 }
 
-// ContainsKeyword filtreleme yardımı
-func ContainsKeyword(text string, keywords []string) bool {
-	text = strings.ToLower(text)
-	for _, kw := range keywords {
-		if strings.Contains(text, strings.ToLower(kw)) {
+func containsAny(text string, words []string) bool {
+	for _, w := range words {
+		if contains(text, w) {
 			return true
 		}
 	}
 	return false
 }
 
-func (f *NewsFilter) IsAllowed(title, description string) bool {
-	score := f.scorer.CalculateScore(title, description, "")
-	return score >= 30 // ya f.MinScore kullanabilirsin
+var backgroundPatterns = []string{
+	"why ",
+	"what is ",
+	"how ",
+	"analysis",
+	"opinion",
+	"explained",
+	"timeline",
+	"profile",
+	"watch:",
+}
+
+var actionVerbs = map[string]int{
+
+	"attack":   30,
+	"strike":   30,
+	"launch":   25,
+	"kill":     35,
+	"die":      35,
+	"warn":     20,
+	"sanction": 20,
+	"ban":      20,
+	"explode":  30,
+	"crash":    30,
+	"resign":   25,
+	"arrest":   25,
+	"close":    20,
+	"halt":     20,
+
+	"saldırı": 30,
+	"deprem":  35,
+	"patlama": 30,
+}
+
+var majorActors = map[string]int{
+
+	"us":      20,
+	"america": 20,
+	"china":   20,
+	"russia":  20,
+	"iran":    20,
+	"israel":  20,
+	"turkey":  25,
+	"türkiye": 25,
+
+	"nato":     20,
+	"un":       20,
+	"pentagon": 20,
+	"fed":      25,
+
+	"erdogan": 25,
+	"trump":   25,
+}
+
+var turkeyKeywords = []string{
+	"turkey",
+	"türkiye",
+	"istanbul",
+	"ankara",
+	"bosphorus",
+}
+
+func isBackground(text string) bool {
+
+	for _, p := range backgroundPatterns {
+
+		if contains(text, p) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func calculateScore(item models.NewsItem) int {
+
+	text := strings.ToLower(item.Title + " " + item.Description)
+
+	if isBackground(text) {
+		return 0
+	}
+
+	score := 0
+
+	if !item.PublishedAt.IsZero() {
+
+		diff := time.Since(item.PublishedAt)
+
+		switch {
+
+		case diff < 10*time.Minute:
+			score += 30
+
+		case diff < 30*time.Minute:
+			score += 20
+
+		case diff < 2*time.Hour:
+			score += 10
+		}
+	}
+
+	for verb, pts := range actionVerbs {
+
+		if contains(text, verb) {
+			score += pts
+		}
+	}
+
+	for actor, pts := range majorActors {
+
+		if contains(text, actor) {
+			score += pts
+		}
+	}
+
+	if containsAny(text, turkeyKeywords) {
+		score += 25
+	}
+
+	for i := 0; i <= 9; i++ {
+
+		if contains(text, string('0'+i)) {
+
+			score += 10
+			break
+		}
+	}
+
+	switch item.Category {
+
+	case models.CategoryBreaking:
+		score += 25
+
+	case models.CategoryEconomy:
+		score += 20
+
+	case models.CategoryTech:
+		score += 15
+
+	case models.CategoryGeneral:
+		score += 10
+	}
+
+	if score > 100 {
+		score = 100
+	}
+
+	return score
+}
+
+func (f *NewsFilter) ShouldProcess(item models.NewsItem) (bool, string) {
+
+	score := calculateScore(item)
+
+	if score == 0 {
+		return false, "background-analysis"
+	}
+
+	if item.Category == models.CategoryBreaking {
+
+		if score < f.BreakingThreshold {
+			return false, "breaking-score-low"
+		}
+
+		return true, "breaking-score-ok"
+	}
+
+	if score < f.NormalThreshold {
+		return false, "normal-score-low"
+	}
+
+	return true, "normal-score-ok"
 }

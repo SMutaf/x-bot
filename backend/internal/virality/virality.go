@@ -6,72 +6,49 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
 )
 
-// Viral potansiyeli yüksek kelimeler ve skorları
-var VIRAL_KEYWORDS = map[string]int{
-	// Çok yüksek viral potansiyel (50+ puan)
-	"öldü":              50,
-	"ölü":               50,
-	"hayatını kaybetti": 50,
-	"savaş":             50,
-	"saldırı":           50,
-	"deprem":            50,
-	"füze":              45,
-	"nükleer":           45,
-	"terör":             45,
-
-	// İngilizce karşılıklar
-	"died":          50,
-	"death":         50,
-	"lost his life": 50,
-	"war":           50,
-	"attack":        50,
-	"earthquake":    50,
-	"missile":       45,
-	"nuclear":       45,
-	"terror":        45,
-
-	// Yüksek viral potansiyel (30-40 puan)
-	"erdoğan":       40,
-	"cumhurbaşkanı": 40,
-	"faiz":          35,
-	"enflasyon":     35,
-	"dolar":         35,
-	"bitcoin":       35,
-	"kripto":        30,
-	"iphone":        30,
-	"tesla":         30,
-	"elon musk":     30,
-	"openai":        30,
-	"chatgpt":       30,
-
-	// İngilizce karşılıklar
-	"president": 35,
-	"inflation": 35,
-	"dollar":    35,
-	"crypto":    30,
-	"stock":     30,
+// IMPORTANCE_KEYWORDS — Breaking haberlerin önem skoru için
+var IMPORTANCE_KEYWORDS = map[string]int{
+	// Çatışma & Güvenlik
+	"öldü": 20, "ölü": 20, "hayatını kaybetti": 20,
+	"savaş": 20, "saldırı": 20, "deprem": 20,
+	"füze": 15, "nükleer": 15, "terör": 15, "darbe": 15,
+	// İngilizce
+	"died": 20, "death": 20, "war": 20, "attack": 20,
+	"earthquake": 20, "missile": 15, "nuclear": 15, "terror": 15, "coup": 15,
+	// Liderler
+	"erdoğan": 15, "cumhurbaşkanı": 15, "president": 15, "prime minister": 15,
+	// Ekonomi (global)
+	"recession": 15, "collapse": 15, "sanctions": 15,
+	"kriz": 10, "çöküş": 10, "yaptırım": 10,
 }
 
-// Negatif viral (puan azaltır)
-var ANTI_VIRAL_KEYWORDS = map[string]int{
-	"top 10":   -20,
-	"top 5":    -20,
-	"listicle": -20,
-	"tutorial": -15,
-	"nasıl":    -10,
-	"how to":   -10,
-	"review":   -10,
-	"inceleme": -10,
+// ENGAGEMENT_KEYWORDS — Normal haberlerin etkileşim skoru için
+var ENGAGEMENT_KEYWORDS = map[string]int{
+	// Ürün & Tech
+	"iphone": 20, "chatgpt": 20, "openai": 20, "gemini": 15, "claude": 15,
+	"tanıttı": 15, "duyurdu": 15, "launched": 15, "announced": 15,
+	// Ekonomik etki
+	"zam": 20, "faiz": 15, "enflasyon": 15, "bitcoin": 15, "kripto": 10,
+	"dolar": 10, "indirim": 15, "maaş": 15,
+	// Rekor
+	"rekor": 15, "ilk kez": 15, "tarihi": 10, "record": 15, "historic": 10,
+	// Figürler
+	"elon musk": 15, "trump": 10,
 }
 
-// Kategori bazlı bonus puanlar
+// Negatif — engagement düşürür
+var ANTI_ENGAGEMENT_KEYWORDS = map[string]int{
+	"top 10": -20, "top 5": -20, "tutorial": -15,
+	"nasıl": -10, "how to": -10, "review": -10, "inceleme": -10,
+}
+
 var CATEGORY_BASE_SCORE = map[models.NewsCategory]int{
-	models.CategoryBreaking: 40, // Breaking news otomatik yüksek skor
+	models.CategoryBreaking: 30,
 	models.CategoryTech:     15,
-	models.CategoryGeneral:  20,
+	models.CategoryGeneral:  15,
 	models.CategoryEconomy:  20,
-	models.CategorySports:   15,
-	models.CategoryScience:  15,
+	models.CategorySports:   10,
+	models.CategoryScience:  10,
 }
 
 type ViralityScorer struct{}
@@ -80,56 +57,49 @@ func NewViralityScorer() *ViralityScorer {
 	return &ViralityScorer{}
 }
 
-// CalculateScore haberin viral potansiyelini 0-100 arası skorlar
+// CalculateScore — Artık sadece loglama için, filtre kararı vermiyor
 func (v *ViralityScorer) CalculateScore(title, content string, category models.NewsCategory) int {
 	text := strings.ToLower(title + " " + content)
-
-	// Base score (kategori bazlı)
 	score := CATEGORY_BASE_SCORE[category]
 
-	// Viral keyword'leri ara ve puan ekle
-	for keyword, points := range VIRAL_KEYWORDS {
-		if strings.Contains(text, keyword) {
-			score += points
+	// Kategori bazlı keyword seti seç
+	if category == models.CategoryBreaking {
+		for kw, pts := range IMPORTANCE_KEYWORDS {
+			if strings.Contains(text, kw) {
+				score += pts
+			}
+		}
+	} else {
+		for kw, pts := range ENGAGEMENT_KEYWORDS {
+			if strings.Contains(text, kw) {
+				score += pts
+			}
+		}
+		for kw, pts := range ANTI_ENGAGEMENT_KEYWORDS {
+			if strings.Contains(text, kw) {
+				score += pts
+			}
 		}
 	}
 
-	// Anti-viral keyword'leri ara ve puan çıkar
-	for keyword, points := range ANTI_VIRAL_KEYWORDS {
-		if strings.Contains(text, keyword) {
-			score += points // points zaten negatif
-		}
-	}
-
-	// Türkiye/İngiltere/ABD gibi region keywords bonus
-	relevantKeywords := []string{"türkiye", "turkey", "istanbul", "ankara", "türk", "lira", "usa", "america", "london", "uk", "england"}
-	for _, keyword := range relevantKeywords {
-		if strings.Contains(text, keyword) {
+	// Türkiye bonusu her iki kategoride de geçerli
+	turkeyKws := []string{"türkiye", "turkey", "istanbul", "ankara", "türk", "lira"}
+	for _, kw := range turkeyKws {
+		if strings.Contains(text, kw) {
 			score += 15
 			break
 		}
 	}
 
-	// Emoji/punctuation bonusu
-	if strings.Contains(text, "!") {
-		score += 5
-	}
-	if strings.Contains(text, "?") {
-		score += 3
-	}
-
-	// Score'u 0-100 arası sınırla
 	if score > 100 {
 		score = 100
 	}
 	if score < 0 {
 		score = 0
 	}
-
 	return score
 }
 
-// GetViralityLevel score'a göre seviye döndür
 func (v *ViralityScorer) GetViralityLevel(score int) string {
 	switch {
 	case score >= 80:

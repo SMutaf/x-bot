@@ -23,8 +23,6 @@ func main() {
 	cfg := config.LoadConfig()
 
 	cache := dedup.NewDeduplicator(cfg.RedisAddr)
-	cache.Client.FlushAll(cache.Ctx)
-	fmt.Println("Redis Hafızası TEMİZLENDİ!")
 
 	aiClient := ai.NewClient("http://localhost:8000")
 	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
@@ -35,43 +33,58 @@ func main() {
 	breakingChannel := make(chan models.NewsItem, 100)
 	normalChannel := make(chan models.NewsItem, 200)
 
-	sc := scraper.NewRSSScraper(cache, breakingChannel, normalChannel, cfg.MaxNewsPerSource)
+	// Filter scraper'a taşındı — importance:30, engagement:40
+	newsFilter := filter.NewNewsFilter(20, 40)
+	sc := scraper.NewRSSScraper(cache, breakingChannel, normalChannel, cfg.MaxNewsPerSource, newsFilter)
 
 	viralityScorer := virality.NewViralityScorer()
-	newsFilter := filter.NewNewsFilter(viralityScorer, 30) // 30 altındaki skorları geçirme
 
 	limiter := rate.NewLimiter(rate.Every(3*time.Second), 1)
 
 	go func() {
+		breakingStreak := 0
+		const maxBreakingStreak = 3
+
 		for {
-			select {
-			case item := <-breakingChannel:
-				limiter.Wait(context.Background())
-				middleware.RecoveryWrapper("Breaking News Worker", func() {
-					processNews(item, aiClient, tgBot, newsFilter, viralityScorer)
-				})
-				continue
-			default:
+			if breakingStreak >= maxBreakingStreak {
+				select {
+				case item := <-normalChannel:
+					fmt.Println("[DENGE] Normal kanala geçiliyor...")
+					limiter.Wait(context.Background())
+					middleware.RecoveryWrapper("Normal News Worker", func() {
+						processNews(item, aiClient, tgBot, viralityScorer)
+					})
+					breakingStreak = 0
+					continue
+				default:
+					fmt.Println("[DENGE] Normal kanalda haber yok, breaking'e dönülüyor.")
+					breakingStreak = 0
+				}
 			}
 
 			select {
 			case item := <-breakingChannel:
 				limiter.Wait(context.Background())
 				middleware.RecoveryWrapper("Breaking News Worker", func() {
-					processNews(item, aiClient, tgBot, newsFilter, viralityScorer)
+					processNews(item, aiClient, tgBot, viralityScorer)
 				})
+				breakingStreak++
+				fmt.Printf("Breaking streak: %d/%d\n", breakingStreak, maxBreakingStreak)
+
 			case item := <-normalChannel:
 				limiter.Wait(context.Background())
 				middleware.RecoveryWrapper("Normal News Worker", func() {
-					processNews(item, aiClient, tgBot, newsFilter, viralityScorer)
+					processNews(item, aiClient, tgBot, viralityScorer)
 				})
+				breakingStreak = 0
+
 			case <-time.After(100 * time.Millisecond):
 				continue
 			}
 		}
 	}()
 
-	fmt.Println("Priority Worker Başlatıldı! (Breaking > Normal)")
+	fmt.Println("Priority Worker Başlatıldı! (Breaking 3:1 Normal oranında)")
 
 	for _, source := range cfg.RSSSources {
 		src := source
@@ -90,29 +103,21 @@ func main() {
 	select {}
 }
 
-func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.ApprovalBot, nf *filter.NewsFilter, vs *virality.ViralityScorer) {
-	// Virality Skoru hesapla
+// processNews — filter kararı scraper'da verildi, burada sadece virality log + AI + Telegram
+func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.ApprovalBot, vs *virality.ViralityScorer) {
 	score := vs.CalculateScore(item.Title, item.Description, item.Category)
 	level := vs.GetViralityLevel(score)
-	fmt.Printf("[%s] Skor: %d (%s) | %s\n", item.Category, score, level, item.Title)
+	fmt.Printf("[%s] Virality: %d (%s) | %s\n", item.Category, score, level, item.Title)
 
-	// Filter kontrolü
-	if !nf.IsAllowed(item.Title, item.Description) {
-		fmt.Printf("Haber filtrelendi (skor düşük veya anti-viral): %s\n", item.Title)
-		return
-	}
-
-	// Saat bazlı gönderim (BREAKING her zaman, diğerleri belirli saatlerde)
 	now := time.Now()
 	hour := now.Hour()
 	if item.Category == models.CategoryTech || item.Category == models.CategoryGeneral {
 		if !((hour >= 8 && hour < 10) || (hour >= 12 && hour < 14) || (hour >= 18 && hour <= 21)) {
-			fmt.Printf("⏳ Haber saat filtresine takıldı, gönderilmiyor: %s\n", item.Title)
+			fmt.Printf("[SAAT FİLTRE] Gönderilmiyor: %s\n", item.Title)
 			return
 		}
 	}
 
-	// Yayınlanma zamanı etiketi
 	publishedTime := ""
 	if !item.PublishedAt.IsZero() {
 		diff := time.Since(item.PublishedAt)
@@ -128,7 +133,10 @@ func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.Appr
 		}
 	}
 
-	response, err := aiClient.GenerateTweet(item.Title, item.Description, item.Link, item.Source, string(item.Category), item.PublishedAt)
+	response, err := aiClient.GenerateTweet(
+		item.Title, item.Description, item.Link,
+		item.Source, string(item.Category), item.PublishedAt,
+	)
 	if err != nil {
 		fmt.Printf("AI Hatası (%s): %v\n", item.Title, err)
 		return

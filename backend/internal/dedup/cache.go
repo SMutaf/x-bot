@@ -34,21 +34,16 @@ func (d *Deduplicator) slugify(text string) string {
 }
 
 func (d *Deduplicator) IsDuplicate(url string) bool {
-	exists, err := d.Client.Exists(d.Ctx, url).Result()
+
+	status, err := d.Client.SetNX(d.Ctx, url, "seen", 7*24*time.Hour).Result()
 	if err != nil {
 		fmt.Printf("Redis Hatası: %v\n", err)
 		return false
 	}
 
-	if exists > 0 {
+	if status == false {
 		return true
 	}
-
-	err = d.Client.Set(d.Ctx, url, "seen", 7*24*time.Hour).Err()
-	if err != nil {
-		fmt.Printf("Redis Kayıt Hatası: %v\n", err)
-	}
-
 	return false
 }
 
