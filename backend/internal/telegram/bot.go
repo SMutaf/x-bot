@@ -21,7 +21,6 @@ func NewApprovalBot(token string, chatID int64) *ApprovalBot {
 	return &ApprovalBot{Bot: bot, ChatID: chatID}
 }
 
-// Kategori etiketi
 func categoryLabel(category string) string {
 	switch category {
 	case "BREAKING":
@@ -30,12 +29,15 @@ func categoryLabel(category string) string {
 		return "💻 TEKNOLOJİ"
 	case "GENERAL":
 		return "📰 GENEL"
+	case "ECONOMY":
+		return "💹 EKONOMİ"
+	case "SPORTS":
+		return "⚽ SPOR"
 	default:
 		return "📌 HABER"
 	}
 }
 
-// MarkdownV2 escape
 func escapeMarkdown(text string) string {
 	replacer := strings.NewReplacer(
 		"_", "\\_",
@@ -61,11 +63,9 @@ func escapeMarkdown(text string) string {
 }
 
 func (b *ApprovalBot) RequestApproval(tweet, link, source, category, publishedTime string) error {
-	// MESAJ 1: TWEET + LİNK (Twitter preview)
 	safeTweet := escapeMarkdown(tweet)
 	safeLink := escapeMarkdown(link)
 
-	// Tweet + Link (Twitter'da bu card preview olacak)
 	tweetWithLink := fmt.Sprintf("%s\n\n%s", safeTweet, safeLink)
 
 	tweetMsg := tgbotapi.NewMessage(b.ChatID, tweetWithLink)
@@ -78,15 +78,11 @@ func (b *ApprovalBot) RequestApproval(tweet, link, source, category, publishedTi
 		return err
 	}
 
-	// MESAJ 2: META BİLGİLER + BUTONLAR
 	safeSource := escapeMarkdown(source)
 	safeTime := escapeMarkdown(publishedTime)
 
 	metaText := fmt.Sprintf(
-		"%s\n\n"+
-			"*Kaynak:* %s\n"+
-			"*⏰ Yayınlanma:* %s\n\n"+
-			"Onaylıyor musun?",
+		"%s\n\n*Kaynak:* %s\n*⏰ Yayınlanma:* %s\n\nOnaylıyor musun?",
 		categoryLabel(category),
 		safeSource,
 		safeTime,

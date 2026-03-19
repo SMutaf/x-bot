@@ -8,6 +8,7 @@ import (
 
 	"github.com/SMutaf/twitter-bot/backend/config"
 	"github.com/SMutaf/twitter-bot/backend/internal/dedup"
+	"github.com/SMutaf/twitter-bot/backend/internal/eventcluster"
 	"github.com/SMutaf/twitter-bot/backend/internal/filter"
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
 	"github.com/mmcdole/gofeed"
@@ -19,7 +20,8 @@ type RSSScraper struct {
 	BreakingChannel chan<- models.NewsItem
 	NormalChannel   chan<- models.NewsItem
 	MaxPerSource    int
-	Filter          *filter.NewsFilter // Filtre scraper'da
+	Filter          *filter.NewsFilter
+	Clusterer       *eventcluster.EventClusterer
 }
 
 func NewRSSScraper(
@@ -28,6 +30,7 @@ func NewRSSScraper(
 	normalCh chan<- models.NewsItem,
 	maxPerSource int,
 	f *filter.NewsFilter,
+	ec *eventcluster.EventClusterer,
 ) *RSSScraper {
 	return &RSSScraper{
 		Parser:          gofeed.NewParser(),
@@ -36,6 +39,7 @@ func NewRSSScraper(
 		NormalChannel:   normalCh,
 		MaxPerSource:    maxPerSource,
 		Filter:          f,
+		Clusterer:       ec,
 	}
 }
 
@@ -49,7 +53,6 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 		return
 	}
 
-	// En yeni haberleri üste al
 	sort.Slice(feed.Items, func(i, j int) bool {
 		var t1, t2 time.Time
 		if feed.Items[i].PublishedParsed != nil {
@@ -75,7 +78,6 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 		if s.Cache.IsDuplicate(item.Link) {
 			continue
 		}
-
 		if s.Cache.IsTitleDuplicate(item.Title) {
 			fmt.Printf("Benzer haber pas geçildi: %s\n", item.Title)
 			continue
@@ -99,20 +101,31 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 			PublishedAt: publishedAt,
 		}
 
-		// --- FİLTRE BURADA — Channel'a girmeden önce karar ver ---
-		allowed, reason := s.Filter.ShouldProcess(newsItem)
+		boost, sourceCount, clusterKey := s.Clusterer.AddEvent(newsItem)
+		newsItem.Score = boost
+		newsItem.ClusterCount = sourceCount
+		newsItem.ClusterKey = clusterKey
+
+		allowed, reason := s.Filter.ShouldProcess(newsItem, boost)
 		if !allowed {
 			fmt.Printf("[FİLTRE] Elendi (%s): %s\n", reason, item.Title)
 			continue
 		}
-		fmt.Printf("[FİLTRE] Geçti (%s): %s\n", reason, item.Title)
-		// ----------------------------------------------------------
+
+		if newsItem.Category == models.CategoryBreaking && newsItem.ClusterCount < 2 {
+			fmt.Printf("[HARD FILTER] BREAKING için yetersiz kaynak (%d < 2): %s\n",
+				newsItem.ClusterCount, newsItem.Title)
+			continue
+		}
+
+		fmt.Printf("[FİLTRE] Geçti (%s, %d kaynak): %s\n", reason, sourceCount, item.Title)
 
 		if source.Category == models.CategoryBreaking {
 			select {
 			case s.BreakingChannel <- newsItem:
 				fmt.Printf("[BREAKING] Kanala eklendi [%d/%d]: %s\n",
 					count+1, s.MaxPerSource, item.Title)
+				count++
 			default:
 				fmt.Println("[BREAKING] Channel dolu, atlandı:", item.Title)
 			}
@@ -121,11 +134,10 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 			case s.NormalChannel <- newsItem:
 				fmt.Printf("[%s] Kanala eklendi [%d/%d]: %s\n",
 					source.Category, count+1, s.MaxPerSource, item.Title)
+				count++
 			default:
 				fmt.Println("[NORMAL] Channel dolu, atlandı:", item.Title)
 			}
 		}
-
-		count++
 	}
 }

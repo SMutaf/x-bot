@@ -8,12 +8,14 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/config"
 	"github.com/SMutaf/twitter-bot/backend/internal/ai"
 	"github.com/SMutaf/twitter-bot/backend/internal/dedup"
+	"github.com/SMutaf/twitter-bot/backend/internal/eventcluster"
 	"github.com/SMutaf/twitter-bot/backend/internal/filter"
 	"github.com/SMutaf/twitter-bot/backend/internal/middleware"
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
+	"github.com/SMutaf/twitter-bot/backend/internal/policy"
+	"github.com/SMutaf/twitter-bot/backend/internal/scoring"
 	"github.com/SMutaf/twitter-bot/backend/internal/scraper"
 	"github.com/SMutaf/twitter-bot/backend/internal/telegram"
-	"github.com/SMutaf/twitter-bot/backend/internal/virality"
 	"golang.org/x/time/rate"
 )
 
@@ -23,6 +25,11 @@ func main() {
 	cfg := config.LoadConfig()
 
 	cache := dedup.NewDeduplicator(cfg.RedisAddr)
+	cache.Client.FlushAll(cache.Ctx)
+	fmt.Println("Redis Hafızası Silindi")
+
+	clusterer := eventcluster.NewEventClusterer(cache.Client)
+	newsScorer := scoring.NewNewsScorer(cache.Client)
 
 	aiClient := ai.NewClient("http://localhost:8000")
 	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
@@ -33,11 +40,8 @@ func main() {
 	breakingChannel := make(chan models.NewsItem, 100)
 	normalChannel := make(chan models.NewsItem, 200)
 
-	// Filter scraper'a taşındı — importance:30, engagement:40
-	newsFilter := filter.NewNewsFilter(20, 40)
-	sc := scraper.NewRSSScraper(cache, breakingChannel, normalChannel, cfg.MaxNewsPerSource, newsFilter)
-
-	viralityScorer := virality.NewViralityScorer()
+	newsFilter := filter.NewNewsFilter(44, 38)
+	sc := scraper.NewRSSScraper(cache, breakingChannel, normalChannel, cfg.MaxNewsPerSource, newsFilter, clusterer)
 
 	limiter := rate.NewLimiter(rate.Every(3*time.Second), 1)
 
@@ -52,7 +56,7 @@ func main() {
 					fmt.Println("[DENGE] Normal kanala geçiliyor...")
 					limiter.Wait(context.Background())
 					middleware.RecoveryWrapper("Normal News Worker", func() {
-						processNews(item, aiClient, tgBot, viralityScorer)
+						processNews(item, aiClient, tgBot, newsScorer, clusterer)
 					})
 					breakingStreak = 0
 					continue
@@ -66,7 +70,7 @@ func main() {
 			case item := <-breakingChannel:
 				limiter.Wait(context.Background())
 				middleware.RecoveryWrapper("Breaking News Worker", func() {
-					processNews(item, aiClient, tgBot, viralityScorer)
+					processNews(item, aiClient, tgBot, newsScorer, clusterer)
 				})
 				breakingStreak++
 				fmt.Printf("Breaking streak: %d/%d\n", breakingStreak, maxBreakingStreak)
@@ -74,7 +78,7 @@ func main() {
 			case item := <-normalChannel:
 				limiter.Wait(context.Background())
 				middleware.RecoveryWrapper("Normal News Worker", func() {
-					processNews(item, aiClient, tgBot, viralityScorer)
+					processNews(item, aiClient, tgBot, newsScorer, clusterer)
 				})
 				breakingStreak = 0
 
@@ -103,16 +107,50 @@ func main() {
 	select {}
 }
 
-// processNews — filter kararı scraper'da verildi, burada sadece virality log + AI + Telegram
-func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.ApprovalBot, vs *virality.ViralityScorer) {
-	score := vs.CalculateScore(item.Title, item.Description, item.Category)
-	level := vs.GetViralityLevel(score)
-	fmt.Printf("[%s] Virality: %d (%s) | %s\n", item.Category, score, level, item.Title)
+func processNews(
+	item models.NewsItem,
+	aiClient *ai.Client,
+	tgBot *telegram.ApprovalBot,
+	newsScorer *scoring.NewsScorer,
+	clusterer *eventcluster.EventClusterer,
+) {
+	catPolicy := policy.Get(item.Category)
 
-	now := time.Now()
+	if item.ClusterCount < catPolicy.MinClusterCount {
+		fmt.Printf("[HARD FILTER] %s için yetersiz kaynak (%d < %d): %s\n",
+			item.Category, item.ClusterCount, catPolicy.MinClusterCount, item.Title)
+		return
+	}
+
+	if item.ClusterKey != "" && clusterer.WasSentRecently(item.ClusterKey) {
+		fmt.Printf("[EVENT DEDUPE] Aynı event yakın zamanda gönderilmiş, atlandı: %s\n", item.Title)
+		return
+	}
+
+	if !policy.IsFreshEnough(item, catPolicy) {
+		fmt.Printf("[FRESHNESS FILTER] Çok eski haber, atıldı: %s\n", item.Title)
+		return
+	}
+
+	score := newsScorer.Calculate(item)
+	fmt.Printf("[%s] Virality: %d (%s) | ClusterCount: %d | Boost: +%d | %s\n",
+		item.Category, score.Final, newsScorer.GetViralityLevel(score.Final), item.ClusterCount, item.Score, item.Title)
+
+	if score.Final < catPolicy.MinVirality {
+		if !(policy.IsCriticalEvent(item) && policy.IsAcceptableCriticalAge(item, catPolicy)) {
+			fmt.Printf("[VIRALITY FILTER] Elendi (score:%d < min:%d): %s\n",
+				score.Final, catPolicy.MinVirality, item.Title)
+			return
+		}
+		fmt.Printf("[CRITICAL OVERRIDE] Düşük skora rağmen geçirildi: %s\n", item.Title)
+	}
+
+	loc, _ := time.LoadLocation("Europe/Istanbul")
+	now := time.Now().In(loc)
 	hour := now.Hour()
-	if item.Category == models.CategoryTech || item.Category == models.CategoryGeneral {
-		if !((hour >= 8 && hour < 10) || (hour >= 12 && hour < 14) || (hour >= 18 && hour <= 21)) {
+
+	if item.Category == models.CategoryTech {
+		if !((hour >= 8 && hour < 11) || (hour >= 13 && hour < 15) || (hour >= 18 && hour <= 22)) {
 			fmt.Printf("[SAAT FİLTRE] Gönderilmiyor: %s\n", item.Title)
 			return
 		}
@@ -129,13 +167,17 @@ func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.Appr
 		case diff < 2*time.Hour:
 			publishedTime = fmt.Sprintf("%d saat önce", int(diff.Hours()))
 		default:
-			publishedTime = item.PublishedAt.Format("15:04")
+			publishedTime = item.PublishedAt.In(loc).Format("15:04")
 		}
 	}
 
 	response, err := aiClient.GenerateTweet(
-		item.Title, item.Description, item.Link,
-		item.Source, string(item.Category), item.PublishedAt,
+		item.Title,
+		item.Description,
+		item.Link,
+		item.Source,
+		string(item.Category),
+		item.PublishedAt,
 	)
 	if err != nil {
 		fmt.Printf("AI Hatası (%s): %v\n", item.Title, err)
@@ -151,9 +193,14 @@ func processNews(item models.NewsItem, aiClient *ai.Client, tgBot *telegram.Appr
 		response.Tweet[:min(30, len(response.Tweet))],
 		response.Reply[:min(30, len(response.Reply))])
 
-	err = tgBot.RequestApproval(response.Tweet, response.Reply, item.Source, string(item.Category), publishedTime)
+	err = tgBot.RequestApproval(response.Tweet, item.Link, item.Source, string(item.Category), publishedTime)
 	if err != nil {
 		fmt.Printf("Telegram Hatası: %v\n", err)
+		return
+	}
+
+	if item.ClusterKey != "" {
+		clusterer.MarkSent(item.ClusterKey, catPolicy.DedupeCooldown)
 	}
 }
 

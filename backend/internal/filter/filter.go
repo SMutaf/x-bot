@@ -1,7 +1,7 @@
 package filter
 
 import (
-	"strings"
+	"fmt"
 	"time"
 
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
@@ -19,189 +19,115 @@ func NewNewsFilter(breaking int, normal int) *NewsFilter {
 	}
 }
 
-func contains(text string, word string) bool {
-	return strings.Contains(text, word)
-}
-
-func containsAny(text string, words []string) bool {
-	for _, w := range words {
-		if contains(text, w) {
-			return true
-		}
-	}
-	return false
-}
-
-var backgroundPatterns = []string{
-	"why ",
-	"what is ",
-	"how ",
-	"analysis",
-	"opinion",
-	"explained",
-	"timeline",
-	"profile",
-	"watch:",
-}
-
-var actionVerbs = map[string]int{
-
-	"attack":   30,
-	"strike":   30,
-	"launch":   25,
-	"kill":     35,
-	"die":      35,
-	"warn":     20,
-	"sanction": 20,
-	"ban":      20,
-	"explode":  30,
-	"crash":    30,
-	"resign":   25,
-	"arrest":   25,
-	"close":    20,
-	"halt":     20,
-
-	"saldırı": 30,
-	"deprem":  35,
-	"patlama": 30,
-}
-
-var majorActors = map[string]int{
-
-	"us":      20,
-	"america": 20,
-	"china":   20,
-	"russia":  20,
-	"iran":    20,
-	"israel":  20,
-	"turkey":  25,
-	"türkiye": 25,
-
-	"nato":     20,
-	"un":       20,
-	"pentagon": 20,
-	"fed":      25,
-
-	"erdogan": 25,
-	"trump":   25,
-}
-
-var turkeyKeywords = []string{
-	"turkey",
-	"türkiye",
-	"istanbul",
-	"ankara",
-	"bosphorus",
-}
-
-func isBackground(text string) bool {
-
-	for _, p := range backgroundPatterns {
-
-		if contains(text, p) {
-			return true
-		}
-	}
-
-	return false
-}
-
 func calculateScore(item models.NewsItem) int {
+	title := normalize(item.Title)
+	fullText := normalize(item.Title + " " + item.Description)
 
-	text := strings.ToLower(item.Title + " " + item.Description)
-
-	if isBackground(text) {
+	if IsBackground(title) {
 		return 0
 	}
 
 	score := 0
 
 	if !item.PublishedAt.IsZero() {
-
 		diff := time.Since(item.PublishedAt)
-
 		switch {
-
 		case diff < 10*time.Minute:
-			score += 30
-
-		case diff < 30*time.Minute:
 			score += 20
-
+		case diff < 30*time.Minute:
+			score += 14
 		case diff < 2*time.Hour:
-			score += 10
+			score += 8
+		case diff < 4*time.Hour:
+			score += 4
 		}
 	}
 
 	for verb, pts := range actionVerbs {
-
-		if contains(text, verb) {
+		if contains(fullText, verb) {
 			score += pts
 		}
 	}
 
 	for actor, pts := range majorActors {
-
-		if contains(text, actor) {
+		if contains(fullText, actor) {
 			score += pts
 		}
 	}
 
-	if containsAny(text, turkeyKeywords) {
-		score += 25
-	}
-
-	for i := 0; i <= 9; i++ {
-
-		if contains(text, string('0'+i)) {
-
-			score += 10
-			break
+	for actor, pts := range shortActors {
+		if containsWord(fullText, actor) {
+			score += pts
 		}
 	}
 
+	if containsAny(fullText, turkeyKeywords) {
+		score += 18
+	}
+
+	if hasNumber(fullText) {
+		score += 8
+	}
+
 	switch item.Category {
-
 	case models.CategoryBreaking:
-		score += 25
-
+		score += 16
 	case models.CategoryEconomy:
-		score += 20
-
+		score += 16
 	case models.CategoryTech:
-		score += 15
-
-	case models.CategoryGeneral:
 		score += 10
+	case models.CategoryGeneral:
+		score += 14
 	}
 
 	if score > 100 {
 		score = 100
 	}
-
 	return score
 }
 
-func (f *NewsFilter) ShouldProcess(item models.NewsItem) (bool, string) {
-
+func (f *NewsFilter) ShouldProcess(item models.NewsItem, boost int) (bool, string) {
 	score := calculateScore(item)
-
 	if score == 0 {
 		return false, "background-analysis"
 	}
 
-	if item.Category == models.CategoryBreaking {
+	text := normalize(item.Title + " " + item.Description)
 
-		if score < f.BreakingThreshold {
-			return false, "breaking-score-low"
+	switch item.Category {
+	case models.CategoryBreaking:
+		if !IsBreakingRelevant(text) {
+			return false, "breaking-not-relevant"
 		}
-
-		return true, "breaking-score-ok"
+	case models.CategoryEconomy:
+		if !IsEconomyRelevant(text) {
+			return false, "economy-not-relevant"
+		}
+	case models.CategoryTech:
+		if !IsTechRelevant(text) {
+			return false, "tech-not-relevant"
+		}
+	case models.CategoryGeneral:
+		if !IsGeneralRelevant(text) {
+			return false, "general-not-relevant"
+		}
 	}
 
-	if score < f.NormalThreshold {
-		return false, "normal-score-low"
+	total := score + boost
+	if total > 100 {
+		total = 100
 	}
 
-	return true, "normal-score-ok"
+	if item.Category == models.CategoryBreaking {
+		if total < f.BreakingThreshold {
+			return false, fmt.Sprintf("breaking-score-low(%d+%d=%d)", score, boost, total)
+		}
+		return true, fmt.Sprintf("breaking-ok(%d+%d=%d)", score, boost, total)
+	}
+
+	if total < f.NormalThreshold {
+		return false, fmt.Sprintf("normal-score-low(%d+%d=%d)", score, boost, total)
+	}
+
+	return true, fmt.Sprintf("normal-ok(%d+%d=%d)", score, boost, total)
 }

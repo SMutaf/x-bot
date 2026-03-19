@@ -1,114 +1,233 @@
 package virality
 
 import (
+	"context"
+	"fmt"
+	"math"
+	"strconv"
 	"strings"
+	"time"
+	"unicode"
 
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
+	"github.com/redis/go-redis/v9"
 )
 
-// IMPORTANCE_KEYWORDS — Breaking haberlerin önem skoru için
-var IMPORTANCE_KEYWORDS = map[string]int{
-	// Çatışma & Güvenlik
-	"öldü": 20, "ölü": 20, "hayatını kaybetti": 20,
-	"savaş": 20, "saldırı": 20, "deprem": 20,
-	"füze": 15, "nükleer": 15, "terör": 15, "darbe": 15,
-	// İngilizce
-	"died": 20, "death": 20, "war": 20, "attack": 20,
-	"earthquake": 20, "missile": 15, "nuclear": 15, "terror": 15, "coup": 15,
-	// Liderler
-	"erdoğan": 15, "cumhurbaşkanı": 15, "president": 15, "prime minister": 15,
-	// Ekonomi (global)
-	"recession": 15, "collapse": 15, "sanctions": 15,
-	"kriz": 10, "çöküş": 10, "yaptırım": 10,
+var lightKeywords = []string{
+	"killed", "died", "arrested", "collapsed", "attacked",
+	"struck", "seized", "resigned", "launched", "exploded",
+	"sanctions", "evacuated", "invaded", "crashed",
+	"öldü", "yaralandı", "tutuklandı", "saldırı", "patlama",
+	"deprem", "çöktü", "istifa", "vuruldu",
+	"faiz", "interest rate", "inflation", "enflasyon", "oil", "petrol", "lng",
+	"fed", "gas facility", "energy", "radar", "resmi gazete", "dışişleri",
 }
 
-// ENGAGEMENT_KEYWORDS — Normal haberlerin etkileşim skoru için
-var ENGAGEMENT_KEYWORDS = map[string]int{
-	// Ürün & Tech
-	"iphone": 20, "chatgpt": 20, "openai": 20, "gemini": 15, "claude": 15,
-	"tanıttı": 15, "duyurdu": 15, "launched": 15, "announced": 15,
-	// Ekonomik etki
-	"zam": 20, "faiz": 15, "enflasyon": 15, "bitcoin": 15, "kripto": 10,
-	"dolar": 10, "indirim": 15, "maaş": 15,
-	// Rekor
-	"rekor": 15, "ilk kez": 15, "tarihi": 10, "record": 15, "historic": 10,
-	// Figürler
-	"elon musk": 15, "trump": 10,
+type ViralityScorer struct {
+	redisClient *redis.Client
+	ctx         context.Context
 }
 
-// Negatif — engagement düşürür
-var ANTI_ENGAGEMENT_KEYWORDS = map[string]int{
-	"top 10": -20, "top 5": -20, "tutorial": -15,
-	"nasıl": -10, "how to": -10, "review": -10, "inceleme": -10,
+func NewViralityScorer(redisClient *redis.Client) *ViralityScorer {
+	return &ViralityScorer{
+		redisClient: redisClient,
+		ctx:         context.Background(),
+	}
 }
 
-var CATEGORY_BASE_SCORE = map[models.NewsCategory]int{
-	models.CategoryBreaking: 30,
-	models.CategoryTech:     15,
-	models.CategoryGeneral:  15,
-	models.CategoryEconomy:  20,
-	models.CategorySports:   10,
-	models.CategoryScience:  10,
+func clusterScore(clusterCount int) float64 {
+	switch {
+	case clusterCount >= 5:
+		return 100
+	case clusterCount >= 4:
+		return 92
+	case clusterCount >= 3:
+		return 82
+	case clusterCount >= 2:
+		return 65
+	default:
+		return 0
+	}
 }
 
-type ViralityScorer struct{}
+func recencyScore(publishedAt time.Time) float64 {
+	if publishedAt.IsZero() {
+		return 0
+	}
 
-func NewViralityScorer() *ViralityScorer {
-	return &ViralityScorer{}
+	diff := time.Since(publishedAt).Minutes()
+	switch {
+	case diff < 5:
+		return 100
+	case diff < 15:
+		return 85
+	case diff < 30:
+		return 70
+	case diff < 60:
+		return 55
+	case diff < 120:
+		return 35
+	case diff < 240:
+		return 22
+	default:
+		return 8
+	}
 }
 
-// CalculateScore — Artık sadece loglama için, filtre kararı vermiyor
-func (v *ViralityScorer) CalculateScore(title, content string, category models.NewsCategory) int {
-	text := strings.ToLower(title + " " + content)
-	score := CATEGORY_BASE_SCORE[category]
+func (v *ViralityScorer) burstScore(item models.NewsItem) float64 {
+	if v.redisClient == nil {
+		return 0
+	}
 
-	// Kategori bazlı keyword seti seç
-	if category == models.CategoryBreaking {
-		for kw, pts := range IMPORTANCE_KEYWORDS {
-			if strings.Contains(text, kw) {
-				score += pts
-			}
+	if item.Category != models.CategoryBreaking && item.Category != models.CategoryGeneral {
+		return 0
+	}
+
+	if item.ClusterCount < 2 {
+		return 0
+	}
+
+	now := time.Now()
+	window := now.Unix() / 300
+	currentKey := fmt.Sprintf("burst:%s:%d", item.Category, window)
+
+	currentCount, err := v.redisClient.Incr(v.ctx, currentKey).Result()
+	if err != nil {
+		return 0
+	}
+	v.redisClient.Expire(v.ctx, currentKey, 45*time.Minute)
+
+	var total float64
+	var samples float64
+
+	for i := int64(1); i <= 6; i++ {
+		prevKey := fmt.Sprintf("burst:%s:%d", item.Category, window-i)
+		val, err := v.redisClient.Get(v.ctx, prevKey).Result()
+		if err != nil {
+			continue
 		}
-	} else {
-		for kw, pts := range ENGAGEMENT_KEYWORDS {
-			if strings.Contains(text, kw) {
-				score += pts
-			}
+
+		n, convErr := strconv.Atoi(val)
+		if convErr != nil {
+			continue
 		}
-		for kw, pts := range ANTI_ENGAGEMENT_KEYWORDS {
-			if strings.Contains(text, kw) {
-				score += pts
-			}
+
+		total += float64(n)
+		samples++
+	}
+
+	var baseline float64 = 1
+	if samples > 0 {
+		baseline = total / samples
+		if baseline < 1 {
+			baseline = 1
 		}
 	}
 
-	// Türkiye bonusu her iki kategoride de geçerli
-	turkeyKws := []string{"türkiye", "turkey", "istanbul", "ankara", "türk", "lira"}
-	for _, kw := range turkeyKws {
+	ratio := float64(currentCount) / baseline
+
+	switch {
+	case currentCount >= 8 && ratio >= 2.2:
+		return 100
+	case currentCount >= 6 && ratio >= 1.8:
+		return 75
+	case currentCount >= 4 && ratio >= 1.5:
+		return 50
+	case currentCount >= 3 && ratio >= 1.3:
+		return 30
+	default:
+		return 0
+	}
+}
+
+func keywordScore(text string) float64 {
+	count := 0
+	for _, kw := range lightKeywords {
 		if strings.Contains(text, kw) {
-			score += 15
-			break
+			count++
 		}
 	}
 
-	if score > 100 {
-		score = 100
+	if hasLargeNumber(text) {
+		count++
 	}
-	if score < 0 {
-		score = 0
+
+	if count == 0 {
+		return 0
 	}
-	return score
+
+	return math.Min(float64(count*15), 100)
+}
+
+func hasLargeNumber(text string) bool {
+	signals := []string{"billion", "trillion", "million", "milyar", "trilyon", "milyon", "%"}
+	for _, s := range signals {
+		if strings.Contains(text, s) {
+			return true
+		}
+	}
+
+	digits := 0
+	for _, r := range text {
+		if unicode.IsDigit(r) {
+			digits++
+			if digits >= 2 {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (v *ViralityScorer) CalculateScore(item models.NewsItem) int {
+	text := strings.ToLower(item.Title + " " + item.Description)
+
+	cScore := clusterScore(item.ClusterCount)
+	rScore := recencyScore(item.PublishedAt)
+	bScore := v.burstScore(item)
+	kScore := keywordScore(text)
+
+	var raw float64
+
+	switch item.Category {
+	case models.CategoryBreaking:
+		raw = (cScore * 0.58) + (rScore * 0.24) + (bScore * 0.12) + (kScore * 0.06)
+	case models.CategoryGeneral:
+		raw = (cScore * 0.10) + (rScore * 0.42) + (bScore * 0.03) + (kScore * 0.45)
+	case models.CategoryEconomy:
+		raw = (cScore * 0.08) + (rScore * 0.38) + (bScore * 0.00) + (kScore * 0.54)
+	case models.CategoryTech:
+		raw = (cScore * 0.10) + (rScore * 0.30) + (bScore * 0.00) + (kScore * 0.60)
+	default:
+		raw = (cScore * 0.20) + (rScore * 0.35) + (bScore * 0.05) + (kScore * 0.40)
+	}
+
+	final := int(math.Round(raw))
+	if final > 100 {
+		final = 100
+	}
+	if final < 0 {
+		final = 0
+	}
+
+	fmt.Printf(
+		"[VIRALITY DETAIL] cluster:%.0f recency:%.0f burst:%.0f keyword:%.0f => %d | %s\n",
+		cScore, rScore, bScore, kScore, final, item.Title,
+	)
+
+	return final
 }
 
 func (v *ViralityScorer) GetViralityLevel(score int) string {
 	switch {
-	case score >= 80:
+	case score >= 70:
 		return "ULTRA_VIRAL"
-	case score >= 60:
+	case score >= 50:
 		return "HIGH_VIRAL"
-	case score >= 40:
+	case score >= 30:
 		return "MEDIUM_VIRAL"
-	case score >= 20:
+	case score >= 15:
 		return "LOW_VIRAL"
 	default:
 		return "NOT_VIRAL"

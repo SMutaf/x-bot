@@ -34,17 +34,13 @@ func (d *Deduplicator) slugify(text string) string {
 }
 
 func (d *Deduplicator) IsDuplicate(url string) bool {
-
 	status, err := d.Client.SetNX(d.Ctx, url, "seen", 7*24*time.Hour).Result()
 	if err != nil {
 		fmt.Printf("Redis Hatası: %v\n", err)
 		return false
 	}
 
-	if status == false {
-		return true
-	}
-	return false
+	return !status
 }
 
 func (d *Deduplicator) IsTitleDuplicate(title string) bool {
@@ -53,7 +49,7 @@ func (d *Deduplicator) IsTitleDuplicate(title string) bool {
 	if exists > 0 {
 		return true
 	}
-	// Başlığı 24 saat boyunca saklar
+
 	d.Client.Set(d.Ctx, slug, "seen", 24*time.Hour)
 	return false
 }
