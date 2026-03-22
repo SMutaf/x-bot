@@ -127,11 +127,6 @@ func processNews(
 		return
 	}
 
-	if !policy.IsFreshEnough(item, catPolicy) {
-		fmt.Printf("[FRESHNESS FILTER] Çok eski haber, atıldı: %s\n", item.Title)
-		return
-	}
-
 	score := newsScorer.Calculate(item)
 	fmt.Printf("[%s] Virality: %d (%s) | ClusterCount: %d | Boost: +%d | %s\n",
 		item.Category, score.Final, newsScorer.GetViralityLevel(score.Final), item.ClusterCount, item.Score, item.Title)

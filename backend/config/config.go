@@ -60,11 +60,6 @@ func LoadConfig() *Config {
 				Interval: 3 * time.Minute,
 			},
 			{
-				URL:      "https://rss.cnn.com/rss/edition.rss",
-				Category: models.CategoryBreaking,
-				Interval: 3 * time.Minute,
-			},
-			{
 				URL:      "https://feeds.bloomberg.com/markets/news.rss",
 				Category: models.CategoryEconomy,
 				Interval: 5 * time.Minute,
