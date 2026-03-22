@@ -14,6 +14,7 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/filter"
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
 	"github.com/SMutaf/twitter-bot/backend/internal/policy"
+	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
 	"github.com/mmcdole/gofeed"
 )
 
@@ -40,6 +41,7 @@ type RSSScraper struct {
 	MaxPerSource    int
 	Filter          *filter.NewsFilter
 	Clusterer       *eventcluster.EventClusterer
+	HealthManager   *sourcehealth.Manager
 }
 
 func NewRSSScraper(
@@ -49,6 +51,7 @@ func NewRSSScraper(
 	maxPerSource int,
 	f *filter.NewsFilter,
 	ec *eventcluster.EventClusterer,
+	healthManager *sourcehealth.Manager,
 ) *RSSScraper {
 	parser := gofeed.NewParser()
 	parser.Client = &http.Client{
@@ -66,20 +69,59 @@ func NewRSSScraper(
 		MaxPerSource:    maxPerSource,
 		Filter:          f,
 		Clusterer:       ec,
+		HealthManager:   healthManager,
 	}
 }
 
 func (s *RSSScraper) Fetch(source config.RSSSource) {
+	sourceName := feedSourceName(source.URL)
+
+	if s.HealthManager != nil {
+		shouldSkip, status := s.HealthManager.ShouldSkip(source, sourceName)
+		if shouldSkip {
+			fmt.Printf(
+				"[SOURCE HEALTH] source=%s category=%s skipped=true disabledUntil=%s consecutiveFails=%d lastErrorType=%s\n",
+				sourceName,
+				source.Category,
+				status.DisabledUntil.Format(time.RFC3339),
+				status.ConsecutiveFails,
+				status.LastErrorType,
+			)
+			return
+		}
+	}
+
 	feed, err := s.fetchWithRetry(source)
 	if err != nil {
-		fmt.Printf("[RSS ERROR] source=%s category=%s type=%s url=%s err=%v\n",
-			feedSourceName(source.URL),
-			source.Category,
-			classifyRSSError(err),
-			source.URL,
-			err,
-		)
+		errType := classifyRSSError(err)
+
+		if s.HealthManager != nil {
+			status := s.HealthManager.RecordFailure(source, sourceName, errType, err.Error())
+			fmt.Printf(
+				"[RSS ERROR] source=%s category=%s type=%s url=%s err=%v consecutiveFails=%d disabledUntil=%s\n",
+				sourceName,
+				source.Category,
+				errType,
+				source.URL,
+				err,
+				status.ConsecutiveFails,
+				status.DisabledUntil.Format(time.RFC3339),
+			)
+		} else {
+			fmt.Printf("[RSS ERROR] source=%s category=%s type=%s url=%s err=%v\n",
+				sourceName,
+				source.Category,
+				errType,
+				source.URL,
+				err,
+			)
+		}
+
 		return
+	}
+
+	if s.HealthManager != nil {
+		s.HealthManager.RecordSuccess(source, sourceName)
 	}
 
 	sort.Slice(feed.Items, func(i, j int) bool {
@@ -255,6 +297,8 @@ func feedSourceName(url string) string {
 		return "CNBC"
 	case strings.Contains(url, "ft.com"):
 		return "FT"
+	case strings.Contains(url, "aa.com.tr"):
+		return "Anadolu Ajansı"
 	default:
 		return "Unknown"
 	}

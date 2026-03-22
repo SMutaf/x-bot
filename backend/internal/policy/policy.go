@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"strings"
 	"time"
 
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
@@ -100,27 +99,4 @@ func IsAcceptableCriticalAge(item models.NewsItem, _ CategoryPolicy) bool {
 	default:
 		return diff <= 4*time.Hour
 	}
-}
-
-func IsCriticalEvent(item models.NewsItem) bool {
-	text := strings.ToLower(item.Title + " " + item.Description)
-
-	criticalKeywords := []string{
-		"fed", "interest rate", "faiz", "merkez bankası", "central bank",
-		"enflasyon", "inflation", "cpi", "ppi",
-		"oil", "petrol", "lng", "gas field", "energy facility",
-		"earthquake", "deprem", "missile", "airstrike", "drone strike",
-		"nuclear", "ceasefire", "martial law", "major gas field",
-		"trump", "erdogan", "putin", "netanyahu",
-		"resmi gazete", "dışişleri", "savunma", "hürmüz", "hormuz",
-		"radar tesisi", "gas facility", "fidan",
-	}
-
-	for _, kw := range criticalKeywords {
-		if strings.Contains(text, kw) {
-			return true
-		}
-	}
-
-	return false
 }

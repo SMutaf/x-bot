@@ -47,7 +47,7 @@ func IsBreakingRelevant(text string) bool {
 	return false
 }
 
-func IsEconomyRelevant(text string) bool {
+/*func IsEconomyRelevant(text string) bool {
 	if containsAny(text, personalFinanceKeywords) {
 		return false
 	}
@@ -74,7 +74,7 @@ func IsEconomyRelevant(text string) bool {
 	}
 
 	return true
-}
+}*/
 
 func IsTechRelevant(text string) bool {
 	if containsAny(text, rejectReviewPatterns) {

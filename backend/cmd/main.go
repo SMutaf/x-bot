@@ -15,6 +15,7 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/policy"
 	"github.com/SMutaf/twitter-bot/backend/internal/scoring"
 	"github.com/SMutaf/twitter-bot/backend/internal/scraper"
+	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
 	"github.com/SMutaf/twitter-bot/backend/internal/telegram"
 	"golang.org/x/time/rate"
 )
@@ -30,6 +31,7 @@ func main() {
 
 	clusterer := eventcluster.NewEventClusterer(cache.Client)
 	newsScorer := scoring.NewNewsScorer(cache.Client)
+	healthManager := sourcehealth.NewManager()
 
 	aiClient := ai.NewClient("http://localhost:8000")
 	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
@@ -41,9 +43,27 @@ func main() {
 	normalChannel := make(chan models.NewsItem, 200)
 
 	newsFilter := filter.NewNewsFilter(44, 38)
-	sc := scraper.NewRSSScraper(cache, breakingChannel, normalChannel, cfg.MaxNewsPerSource, newsFilter, clusterer)
+	sc := scraper.NewRSSScraper(
+		cache,
+		breakingChannel,
+		normalChannel,
+		cfg.MaxNewsPerSource,
+		newsFilter,
+		clusterer,
+		healthManager,
+	)
 
 	limiter := rate.NewLimiter(rate.Every(3*time.Second), 1)
+
+	go func() {
+		ticker := time.NewTicker(2 * time.Minute)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			snapshot := healthManager.Snapshot()
+			fmt.Println(sourcehealth.FormatSnapshot(snapshot))
+		}
+	}()
 
 	go func() {
 		breakingStreak := 0
