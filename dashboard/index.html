@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>x-bot Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>x-bot Dashboard</h1>
+      <p>Kaynak sağlığı, yayınlanan ve elenen haberler</p>
+    </header>
+
+    <section class="cards" id="summaryCards"></section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Source Health</h2>
+        <button class="download-btn" onclick="downloadFile('/download/source-health')">İndir JSONL</button>
+      </div>
+      <table id="sourcesTable">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Category</th>
+            <th>State</th>
+            <th>Fails</th>
+            <th>Last Error</th>
+            <th>Disabled Until</th>
+            <th>Last Success</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="grid">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Published News</h2>
+          <button class="download-btn" onclick="downloadFile('/download/published')">İndir JSONL</button>
+        </div>
+        <table id="publishedTable">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Category</th>
+              <th>Source</th>
+              <th>Virality</th>
+              <th>Cluster</th>
+              <th>Title</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Rejected News</h2>
+          <button class="download-btn" onclick="downloadFile('/download/rejected')">İndir JSONL</button>
+        </div>
+        <table id="rejectedTable">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Category</th>
+              <th>Source</th>
+              <th>Reason</th>
+              <th>Title</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

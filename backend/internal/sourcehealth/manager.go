@@ -121,10 +121,6 @@ func (m *Manager) cooldownFor(consecutiveFails int, errType string) time.Duratio
 		if base < 5*time.Minute {
 			base = 5 * time.Minute
 		}
-	case "EOF", "TIMEOUT":
-		// base 그대로
-	default:
-		// base 그대로
 	}
 
 	return base

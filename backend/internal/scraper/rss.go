@@ -13,6 +13,7 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/eventcluster"
 	"github.com/SMutaf/twitter-bot/backend/internal/filter"
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
+	"github.com/SMutaf/twitter-bot/backend/internal/monitoring"
 	"github.com/SMutaf/twitter-bot/backend/internal/policy"
 	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
 	"github.com/mmcdole/gofeed"
@@ -42,6 +43,7 @@ type RSSScraper struct {
 	Filter          *filter.NewsFilter
 	Clusterer       *eventcluster.EventClusterer
 	HealthManager   *sourcehealth.Manager
+	Monitoring      *monitoring.Manager
 }
 
 func NewRSSScraper(
@@ -52,6 +54,7 @@ func NewRSSScraper(
 	f *filter.NewsFilter,
 	ec *eventcluster.EventClusterer,
 	healthManager *sourcehealth.Manager,
+	monitor *monitoring.Manager,
 ) *RSSScraper {
 	parser := gofeed.NewParser()
 	parser.Client = &http.Client{
@@ -70,6 +73,7 @@ func NewRSSScraper(
 		Filter:          f,
 		Clusterer:       ec,
 		HealthManager:   healthManager,
+		Monitoring:      monitor,
 	}
 }
 
@@ -87,6 +91,7 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 				status.ConsecutiveFails,
 				status.LastErrorType,
 			)
+			s.recordHealthEvent(status, "disabled")
 			return
 		}
 	}
@@ -107,6 +112,7 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 				status.ConsecutiveFails,
 				status.DisabledUntil.Format(time.RFC3339),
 			)
+			s.recordHealthEvent(status, "degraded")
 		} else {
 			fmt.Printf("[RSS ERROR] source=%s category=%s type=%s url=%s err=%v\n",
 				sourceName,
@@ -122,6 +128,8 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 
 	if s.HealthManager != nil {
 		s.HealthManager.RecordSuccess(source, sourceName)
+		_, status := s.HealthManager.ShouldSkip(source, sourceName)
+		s.recordHealthEvent(status, "healthy")
 	}
 
 	sort.Slice(feed.Items, func(i, j int) bool {
@@ -180,18 +188,21 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 		allowed, reason := s.Filter.ShouldProcess(newsItem, boost)
 		if !allowed {
 			fmt.Printf("[FİLTRE] Elendi (%s): %s\n", reason, item.Title)
+			s.recordRejected(newsItem, reason)
 			continue
 		}
 
 		catPolicy := policy.Get(newsItem.Category)
 		if !policy.IsFreshEnough(newsItem, catPolicy) {
 			fmt.Printf("[FRESHNESS FILTER] Çok eski haber, atıldı: %s\n", newsItem.Title)
+			s.recordRejected(newsItem, "freshness-filter")
 			continue
 		}
 
 		if newsItem.Category == models.CategoryBreaking && newsItem.ClusterCount < 2 {
 			fmt.Printf("[HARD FILTER] BREAKING için yetersiz kaynak (%d < 2): %s\n",
 				newsItem.ClusterCount, newsItem.Title)
+			s.recordRejected(newsItem, "breaking-min-cluster")
 			continue
 		}
 
@@ -205,6 +216,7 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 				count++
 			default:
 				fmt.Println("[BREAKING] Channel dolu, atlandı:", item.Title)
+				s.recordRejected(newsItem, "breaking-channel-full")
 			}
 		} else {
 			select {
@@ -214,6 +226,7 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 				count++
 			default:
 				fmt.Println("[NORMAL] Channel dolu, atlandı:", item.Title)
+				s.recordRejected(newsItem, "normal-channel-full")
 			}
 		}
 	}
@@ -254,6 +267,39 @@ func (s *RSSScraper) fetchWithRetry(source config.RSSSource) (*gofeed.Feed, erro
 	return nil, lastErr
 }
 
+func (s *RSSScraper) recordRejected(item models.NewsItem, reason string) {
+	if s.Monitoring == nil {
+		return
+	}
+
+	s.Monitoring.RecordRejected(monitoring.RejectedNewsEvent{
+		Time:     time.Now(),
+		Title:    item.Title,
+		Category: string(item.Category),
+		Source:   item.Source,
+		Reason:   reason,
+	})
+}
+
+func (s *RSSScraper) recordHealthEvent(status sourcehealth.Status, state string) {
+	if s.Monitoring == nil {
+		return
+	}
+
+	s.Monitoring.RecordSourceHealth(monitoring.SourceHealthEvent{
+		Time:             time.Now(),
+		SourceName:       status.SourceName,
+		URL:              status.URL,
+		Category:         string(status.Category),
+		State:            state,
+		ConsecutiveFails: status.ConsecutiveFails,
+		LastErrorType:    status.LastErrorType,
+		LastErrorMessage: status.LastErrorMessage,
+		DisabledUntil:    formatTime(status.DisabledUntil),
+		LastSuccessAt:    formatTime(status.LastSuccessAt),
+	})
+}
+
 func classifyRSSError(err error) string {
 	msg := strings.ToLower(err.Error())
 
@@ -273,8 +319,6 @@ func classifyRSSError(err error) string {
 
 func feedSourceName(url string) string {
 	switch {
-	case strings.Contains(url, "cnn.com"):
-		return "CNN"
 	case strings.Contains(url, "trthaber.com"):
 		return "TRT Haber"
 	case strings.Contains(url, "aljazeera.com"):
@@ -299,7 +343,22 @@ func feedSourceName(url string) string {
 		return "FT"
 	case strings.Contains(url, "aa.com.tr"):
 		return "Anadolu Ajansı"
+	case strings.Contains(url, "webtekno.com"):
+		return "Webtekno"
+	case strings.Contains(url, "techcrunch.com"):
+		return "TechCrunch"
+	case strings.Contains(url, "theverge.com"):
+		return "The Verge"
+	case strings.Contains(url, "arstechnica.com"):
+		return "Ars Technica"
 	default:
 		return "Unknown"
 	}
+}
+
+func formatTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339)
 }
