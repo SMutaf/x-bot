@@ -26,3 +26,6 @@ __pycache__/
 *.so
 .Python
 pip-log.txt
+
+# monitoring data
+backend/data/*.jsonl
