@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-type TweetRequest struct {
+type MessageRequest struct {
 	Title       string     `json:"title"`
 	Content     string     `json:"content"`
 	URL         string     `json:"url"`
@@ -17,10 +17,14 @@ type TweetRequest struct {
 	PublishedAt *time.Time `json:"published_at,omitempty"`
 }
 
-type TweetResponse struct {
-	Tweet     string `json:"tweet"`
-	Reply     string `json:"reply"`
-	Sentiment string `json:"sentiment"`
+type MessageResponse struct {
+	Message    string `json:"message"`
+	Hook       string `json:"hook"`
+	Summary    string `json:"summary"`
+	Importance string `json:"importance"`
+	SourceLine string `json:"source_line"`
+	Sentiment  string `json:"sentiment"`
+	NewsType   string `json:"news_type"`
 }
 
 type Client struct {
@@ -37,13 +41,13 @@ func NewClient(apiURL string) *Client {
 	}
 }
 
-func (c *Client) GenerateTweet(title, content, url, source, category string, publishedAt time.Time) (*TweetResponse, error) {
+func (c *Client) GenerateTelegramPost(title, content, url, source, category string, publishedAt time.Time) (*MessageResponse, error) {
 	var pubAt *time.Time
 	if !publishedAt.IsZero() {
 		pubAt = &publishedAt
 	}
 
-	reqBody := TweetRequest{
+	reqBody := MessageRequest{
 		Title:       title,
 		Content:     content,
 		URL:         url,
@@ -54,7 +58,7 @@ func (c *Client) GenerateTweet(title, content, url, source, category string, pub
 
 	jsonValue, _ := json.Marshal(reqBody)
 
-	resp, err := c.HTTPClient.Post(c.BaseURL+"/generate-tweet", "application/json", bytes.NewBuffer(jsonValue))
+	resp, err := c.HTTPClient.Post(c.BaseURL+"/generate-message", "application/json", bytes.NewBuffer(jsonValue))
 	if err != nil {
 		return nil, fmt.Errorf("AI servisine ulaşılamadı: %v", err)
 	}
@@ -64,10 +68,10 @@ func (c *Client) GenerateTweet(title, content, url, source, category string, pub
 		return nil, fmt.Errorf("AI servisi hata döndü: %d", resp.StatusCode)
 	}
 
-	var tweetResp TweetResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tweetResp); err != nil {
+	var out MessageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, fmt.Errorf("cevap okunamadı: %v", err)
 	}
 
-	return &tweetResp, nil
+	return &out, nil
 }

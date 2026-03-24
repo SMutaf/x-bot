@@ -11,7 +11,6 @@ import re
 
 load_dotenv()
 
-# Hassas kelimeler - ciddi muamele gerektiren konular
 SENSITIVE_KEYWORDS = [
     "öldü", "ölü", "hayatını kaybetti", "şehit", "vefat", "ölüm",
     "saldırı", "bomba", "füze", "savaş", "çatışma", "terör",
@@ -21,10 +20,14 @@ SENSITIVE_KEYWORDS = [
     "kill", "death", "dead", "attack", "bombing", "war"
 ]
 
-class TweetOutput(BaseModel):
-    tweet: str = Field(description="Viral, engaging tweet content in Turkish without links.")
-    reply: str = Field(description="Reply content containing the source link and hashtags.")
-    sentiment: str = Field(description="The sentiment of the news: positive, negative, or neutral")
+
+class TelegramOutput(BaseModel):
+    hook: str = Field(description="Kısa, dikkat çekici ilk satır. Türkçe. Maksimum 10 kelime.")
+    summary: str = Field(description="Haberi 1-2 kısa cümlede anlaşılır şekilde özetleyen Türkçe metin.")
+    importance: str = Field(description="Bu haberin neden önemli olduğunu anlatan 1 kısa cümlelik Türkçe metin.")
+    source_line: str = Field(description="Kaynak satırı. Format: 'Kaynak: X'")
+    sentiment: str = Field(description="positive, negative veya neutral")
+
 
 class GeminiService:
     def __init__(self):
@@ -33,260 +36,312 @@ class GeminiService:
 
         self.llm = ChatGoogleGenerativeAI(
             model="gemma-3-12b-it",
-            temperature=0.7,
+            temperature=0.6,
             convert_system_message_to_human=True
         )
-        self.parser = JsonOutputParser(pydantic_object=TweetOutput)
+        self.parser = JsonOutputParser(pydantic_object=TelegramOutput)
 
     def _detect_news_type(self, title: str, content: str, category: str) -> str:
-        """
-        Haberin türünü tespit et:
-        - TRAGEDY: Ölüm, savaş, terör, kaza, afet
-        - BREAKING_SERIOUS: Ciddi politik/ekonomik gelişme
-        - TECH_LAUNCH: Ürün lansman, yeni teknoloji
-        - GENERAL_NEWS: Normal haber
-        """
         text = (title + " " + content).lower()
-        
-        # Hassas kelime kontrolü
+
         for keyword in SENSITIVE_KEYWORDS:
             if keyword in text:
                 return "TRAGEDY"
-        
-        # Breaking + ciddi konular
+
         if category == "BREAKING":
-            if any(word in text for word in ["başkan", "cumhurbaşkanı", "minister", "president", "hükümet"]):
-                return "BREAKING_SERIOUS"
             return "BREAKING_SERIOUS"
-        
-        # Teknoloji lansmanları
+
         if category == "TECH":
             if any(word in text for word in ["tanıttı", "duyurdu", "çıktı", "launch", "announce", "reveal"]):
                 return "TECH_LAUNCH"
-        
+
+        if category == "ECONOMY":
+            return "ECONOMY_NEWS"
+
         return "GENERAL_NEWS"
 
     def _get_prompt_strategy(self, news_type: str, category: str, time_context: str) -> dict:
-        """
-        Haber türüne göre prompt stratejisi belirle
-        """
-        
         if news_type == "TRAGEDY":
             return {
-                "tone": "EXTREMELY SERIOUS. NO emojis. NO questions. NO engagement tricks.",
-                "structure": "State the facts clearly and respectfully. Period. No commentary.",
-                "emoji_rule": "ZERO emojis. Not even 🔴. Use text only: SON DAKİKA or BREAKING.",
-                "question_rule": "NO questions. NO 'Ne düşünüyorsunuz?'. Just facts.",
+                "tone": "Ciddi, saygılı, doğrudan. Abartı yapma. Sansasyonel dil kullanma.",
+                "hook_rule": "Hook kısa, sade ve ciddi olmalı. Merak tuzağı kurma. Emoji kullanma.",
+                "summary_rule": "Olayı net şekilde anlat. 1-2 cümle yeterli. Abartılı sıfat kullanma.",
+                "importance_rule": "Neden önemli olduğunu sakin ve saygılı şekilde belirt.",
+                "emoji_rule": "Emoji kullanma.",
                 "example": """
-Good: "SON DAKİKA | İran'da okul saldırısında 15 öğrenci hayatını kaybetti. (Al Jazeera)"
-Bad: "İran'da trajedi 😢 Okul saldırısı... Ne düşünüyorsunuz?"
-                """
-            }
-        
-        elif news_type == "BREAKING_SERIOUS":
-            return {
-                "tone": "Urgent but neutral. Maximum 1 red dot emoji (🔴). No playful tone.",
-                "structure": "Lead with action. Add context. No questions unless genuinely important.",
-                "emoji_rule": "Only 🔴 for SON DAKİKA. No other emojis.",
-                "question_rule": "Avoid questions. If used, make it rhetorical and serious.",
-                "example": """
-Good: "🔴 SON DAKİKA | Merkez Bankası faiz oranını %45'e yükseltti."
-Bad: "Merkez Bankası faiz artırdı! 🚀 Bu karar ekonomiyi nasıl etkiler?"
-                """
-            }
-        
-        elif news_type == "TECH_LAUNCH":
-            return {
-                "tone": "Excited but informative. Max 2 tech-related emojis.",
-                "structure": "Highlight innovation → Key specs → Optional question.",
-                "emoji_rule": "Tech emojis OK: 🚀 💻 📱 ⚡ (max 2)",
-                "question_rule": "Questions OK for tech: 'Almayı düşünür müsünüz?', 'Hangisi daha iyi?'",
-                "example": """
-Good: "iPhone 17 tanıtıldı! 🚀 6.1 inç OLED, A20 çip, 1TB depolama. Almayı düşünür müsünüz?"
-Bad: "iPhone 17 geldi işte! 😍🔥💯 Sizce bu telefon efsane mi olacak?"
-                """
-            }
-        
-        else:  # GENERAL_NEWS
-            return {
-                "tone": "Balanced. Informative. Slightly engaging.",
-                "structure": "Lead → Context → Light question if appropriate.",
-                "emoji_rule": "Max 1-2 contextual emojis.",
-                "question_rule": "Questions OK but not mandatory.",
-                "example": """
-Good: "Türkiye'de elektrikli araç satışları %40 arttı. Altyapı yeterli mi?"
+İyi örnek:
+Hook: Hastaneye saldırıda can kaybı arttı
+Summary: Sudan'daki bir hastaneye düzenlenen saldırıda en az 64 kişi hayatını kaybetti.
+Importance: Olay, bölgedeki insani krizin daha da derinleştiğini gösteriyor.
                 """
             }
 
+        elif news_type == "BREAKING_SERIOUS":
+            return {
+                "tone": "Hızlı, net, güvenilir. Fazla duygusal veya aşırı kışkırtıcı olma.",
+                "hook_rule": "Hook dikkat çekici olmalı ama bağıran clickbait gibi olmamalı.",
+                "summary_rule": "Ne olduğunu açık şekilde yaz. Kısa, temiz ve anlaşılır tut.",
+                "importance_rule": "Piyasa, güvenlik, diplomasi veya bölgesel etkiyi tek cümlede açıkla.",
+                "emoji_rule": "Gerekirse en fazla 1 emoji kullanılabilir ama şart değil.",
+                "example": """
+İyi örnek:
+Hook: Ortadoğu'da tansiyon yeniden yükseliyor
+Summary: İran'a bağlı hedeflere yönelik yeni saldırılar bölgede gerilimi artırdı.
+Importance: Bu gelişme enerji fiyatları ve bölgesel güvenlik açısından yeni riskler yaratabilir.
+                """
+            }
+
+        elif news_type == "TECH_LAUNCH":
+            return {
+                "tone": "Canlı ama profesyonel. Çok oyuncaklaştırma.",
+                "hook_rule": "Hook yeni özelliği veya farkı öne çıkarsın.",
+                "summary_rule": "Ürünü veya yeniliği 1-2 kısa cümlede anlat.",
+                "importance_rule": "Neden dikkat çekici olduğunu kısa söyle.",
+                "emoji_rule": "En fazla 1 uygun emoji kullanılabilir.",
+                "example": """
+İyi örnek:
+Hook: Yeni modelde dikkat çeken yükseltme
+Summary: Apple yeni cihazında daha güçlü çip ve gelişmiş kamera sistemi sundu.
+Importance: Bu güncelleme, premium telefon pazarındaki rekabeti yeniden hızlandırabilir.
+                """
+            }
+
+        elif news_type == "ECONOMY_NEWS":
+            return {
+                "tone": "Net, sade, etkisini anlatan. Aşırı teknikleşme.",
+                "hook_rule": "Hook, ekonomik etkinin ne olduğunu hissettirsin.",
+                "summary_rule": "Veriyi veya kararı basit Türkçeyle özetle.",
+                "importance_rule": "Türkiye, piyasalar veya küresel ekonomi etkisini belirt.",
+                "emoji_rule": "Emoji kullanma ya da en fazla 1 nötr emoji kullan.",
+                "example": """
+İyi örnek:
+Hook: Enerji fiyatlarında yeni baskı oluşuyor
+Summary: Petrol fiyatlarındaki yükseliş, küresel piyasalarda maliyet baskısını artırıyor.
+Importance: Bu durum enflasyon beklentilerini ve risk iştahını doğrudan etkileyebilir.
+                """
+            }
+
+        return {
+            "tone": "Dengeli, açık ve doğal Türkçe kullan.",
+            "hook_rule": "Hook ilk bakışta haberi okutmalı.",
+            "summary_rule": "Haberi 1-2 kısa cümlede sade şekilde anlat.",
+            "importance_rule": "Neden önemli olduğunu tek kısa cümlede belirt.",
+            "emoji_rule": "Gerekmedikçe emoji kullanma.",
+            "example": """
+İyi örnek:
+Hook: Bölgedeki diplomasi trafiği hızlandı
+Summary: Taraflar gerilimin büyümemesi için yeni temaslarda bulundu.
+Importance: Bu görüşmeler, önümüzdeki günlerde atılacak adımlar açısından belirleyici olabilir.
+            """
+        }
+
     def _calculate_time_context(self, published_at: Optional[datetime]) -> str:
-        """
-        Haberin ne kadar yeni olduğunu hesaplar ve prompt'a eklenecek bağlamı döner.
-        """
         if not published_at:
             return ""
-        
-        # Timezone-aware karşılaştırma
+
         now = datetime.now(timezone.utc)
         if published_at.tzinfo is None:
             published_at = published_at.replace(tzinfo=timezone.utc)
-        
+
         diff = now - published_at
         minutes = int(diff.total_seconds() / 60)
-        
+
         if minutes < 5:
-            return "\n🔥 ULTRA-FRESH NEWS (< 5 minutes old): Use present tense, emphasize urgency."
+            return "\nZAMAN BAĞLAMI: Haber çok taze. Dili güncel ve canlı tut."
         elif minutes < 30:
-            return f"\n⚡ FRESH NEWS ({minutes} minutes old): Maintain urgency, recent past tense."
+            return f"\nZAMAN BAĞLAMI: Haber çok yeni ({minutes} dakika). Aciliyeti koru."
         elif minutes < 120:
-            return f"\n📰 RECENT NEWS ({minutes // 60} hours old): Balance timeliness with context."
+            return f"\nZAMAN BAĞLAMI: Haber yakın zamanda yayımlandı ({minutes // 60} saat)."
         else:
-            return "\n📚 Older news: Focus on evergreen value."
+            return "\nZAMAN BAĞLAMI: Haber nispeten eski. Aciliyet yerine önem vurgusu yap."
 
     @retry(
         stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
+        wait=wait_exponential(multiplier=1, min=3, max=10),
         retry=retry_if_exception_type(Exception),
         reraise=True
     )
     def _invoke_chain(self, chain, inputs):
         return chain.invoke(inputs)
 
-    def generate_viral_tweet(
-        self, 
-        title: str, 
-        content: str, 
-        url: str, 
-        source: str, 
+    def _clean_text(self, text: str) -> str:
+        if not text:
+            return ""
+        text = re.sub(r"\s+", " ", text).strip()
+        text = text.replace("“", '"').replace("”", '"').replace("’", "'")
+        return text
+
+    def _truncate_sentence(self, text: str, max_len: int) -> str:
+        text = self._clean_text(text)
+        if len(text) <= max_len:
+            return text
+
+        truncated = text[:max_len].rsplit(" ", 1)[0].strip()
+        if not truncated.endswith((".", "!", "?")):
+            truncated += "..."
+        return truncated
+
+    def _build_final_message(self, result: dict, url: str) -> str:
+        hook = self._truncate_sentence(result.get("hook", ""), 80)
+        summary = self._truncate_sentence(result.get("summary", ""), 240)
+        importance = self._truncate_sentence(result.get("importance", ""), 160)
+        source_line = self._clean_text(result.get("source_line", ""))
+
+        parts = []
+
+        if hook:
+            parts.append(f"**{hook}**")
+
+        if summary:
+            parts.append(summary)
+
+        if importance:
+            parts.append(f"_Neden önemli:_ {importance}")
+
+        if source_line:
+            parts.append(source_line)
+
+        if url:
+            parts.append(url)
+
+        return "\n\n".join(parts).strip()
+
+    def generate_telegram_post(
+        self,
+        title: str,
+        content: str,
+        url: str,
+        source: str,
         category: str = "GENERAL",
-        published_at: Optional[datetime] = None 
+        published_at: Optional[datetime] = None
     ):
-        # 1. Haber türünü tespit et
-        news_type = self._detect_news_type(title, content, category)
-        
-        # 2. Zaman bağlamını hesapla
+        news_type = self._detect_news_type(title, content or "", category)
         time_context = self._calculate_time_context(published_at)
-        
-        # 3. Prompt stratejisini al
         strategy = self._get_prompt_strategy(news_type, category, time_context)
 
-        # 4. YENİ TELİF KORUMALI DİNAMİK PROMPT
         template = """
-        You are a CONTEXT-AWARE Social Media Strategist for a professional news account.
+You are an expert Telegram news editor writing for a Turkish audience.
 
-         CRITICAL COPYRIGHT COMPLIANCE:
-        - NEVER copy the headline verbatim
-        - NEVER copy the first paragraph
-        - NEVER use exact quotes longer than 5 words
-        - ALWAYS rewrite in your own words
-        - ALWAYS add original analysis/context
-        - This is TRANSFORMATIVE USE, not reproduction
+AMAÇ:
+Verilen haberi Telegram kanalı için kısa, dikkat çekici, güvenilir ve sade bir formatta yeniden yaz.
 
-        NEWS TYPE: {news_type}
-        {time_context}
+EN KRİTİK KURAL:
+- İlk satır mutlaka güçlü bir HOOK olsun.
+- Hook, başlığı kopyalamasın.
+- Hook, "bu neden önemli?" hissini ilk anda versin.
+- Hook maksimum 10 kelime olsun.
+- Hook clickbait gibi çiğ olmasın.
 
-        TONE & STYLE REQUIREMENTS:
-        {tone_instruction}
+TELİF ve GÜVENLİ YENİDEN YAZIM KURALLARI:
+- Başlığı asla birebir kopyalama
+- İlk paragrafı asla birebir kopyalama
+- Haberi kendi cümlelerinle yeniden kur
+- Aynı anlamı daha doğal ve özgün Türkçeyle ver
 
-        STRUCTURE:
-        {structure_instruction}
+DİL KURALLARI:
+- Çıktı tamamen Türkçe olmalı
+- Çok uzun cümle kurma
+- Teknik dili gerekmedikçe sadeleştir
+- Kısa, net, okunabilir ol
 
-        EMOJI RULES:
-        {emoji_rule}
+TON:
+{tone_instruction}
 
-        QUESTION RULES:
-        {question_rule}
+HOOK KURALI:
+{hook_rule}
 
-        COPYRIGHT-SAFE REWRITING RULES:
-        1. Read the headline → Understand the core fact
-        2. REWRITE completely in different words
-        3. Add your own angle/context
-        4. Make it conversational, not journalistic
-        5. If the news is "X announced Y", write "Y geldi! X duyurdu." (different structure)
+ÖZET KURALI:
+{summary_rule}
 
-        EXAMPLES OF TRANSFORMATIVE REWRITING:
+ÖNEM KURALI:
+{importance_rule}
 
-        ❌ BAD (Too similar to source):
-        Source: "Apple announces iPhone 17 with 200MP camera"
-        Tweet: "Apple iPhone 17'yi 200MP kamerayla duyurdu"
-        Problem: Nearly identical, just translated
+EMOJI KURALI:
+{emoji_rule}
 
-        ✅ GOOD (Transformative):
-        Source: "Apple announces iPhone 17 with 200MP camera"
-        Tweet: "200 megapiksel kamera geliyor! iPhone 17 tanıtıldı."
-        Why: Different structure, adds excitement, original phrasing
+FORMAT:
+1. hook
+2. summary
+3. importance
+4. source_line
 
-        ❌ BAD (Too similar):
-        Source: "Merkez Bankası faiz oranını %45'e yükseltti"
-        Tweet: "TCMB faiz oranını yüzde 45'e yükseltti"
-        Problem: Just rephrased minimally
+SOURCE_LINE formatı mutlaka şu biçimde olsun:
+Kaynak: {source}
 
-        ✅ GOOD (Transformative):
-        Source: "Merkez Bankası faiz oranını %45'e yükseltti"
-        Tweet: "Faizde sert adım! TCMB %45 kararını açıkladı."
-        Why: Adds interpretation, different angle
+İYİ ÖRNEK:
+{example}
 
-        CRITICAL LANGUAGE REQUIREMENT:
-        - Output MUST be 100% in Turkish (except proper nouns)
-        - Use natural, native Turkish phrasing
-        - Do NOT translate word-by-word
+HABER BİLGİLERİ:
+- Kategori: {category}
+- Haber Türü: {news_type}
+{time_context}
+- Kaynak: {source}
+- Orijinal Başlık: {title}
+- Orijinal İçerik: {content}
+- Link: {url}
 
-        UNIVERSAL HARD RULES:
-        1. Main tweet under 280 characters
-        2. NEVER include link in main tweet
-        3. Be factually accurate but USE YOUR OWN WORDS
-        4. Match the tone to the content severity
+EK KURALLAR:
+- summary en fazla 2 kısa cümle olsun
+- importance tek cümle olsun
+- source_line sadece kaynak bilgisini içersin
+- link source_line içine yazma
+- doğrulanmamış yorum ekleme
 
-        SOURCE NEWS DATA:
-        - Source: {source}
-        - Original Headline: {title}
-        - Original Content: {content}
-        - URL: {url}
-
-        IMPORTANT: The reply field MUST include:
-        - Source attribution: "{source} haberi:"
-        - The link: {url}
-        - Relevant hashtags
-
-        OUTPUT FORMAT:
-        {format_instructions}
+ÇIKTI:
+{format_instructions}
         """
 
         prompt = PromptTemplate(
             template=template,
             input_variables=[
-                "news_type",
-                "time_context", 
                 "tone_instruction",
-                "structure_instruction",
+                "hook_rule",
+                "summary_rule",
+                "importance_rule",
                 "emoji_rule",
-                "question_rule",
                 "example",
-                "source", 
-                "title", 
-                "content", 
-                "url"
+                "category",
+                "news_type",
+                "time_context",
+                "source",
+                "title",
+                "content",
+                "url",
             ],
-            partial_variables={"format_instructions": self.parser.get_format_instructions()}
+            partial_variables={
+                "format_instructions": self.parser.get_format_instructions()
+            },
         )
 
         chain = prompt | self.llm | self.parser
 
         result = self._invoke_chain(chain, {
+            "tone_instruction": strategy["tone"],
+            "hook_rule": strategy["hook_rule"],
+            "summary_rule": strategy["summary_rule"],
+            "importance_rule": strategy["importance_rule"],
+            "emoji_rule": strategy["emoji_rule"],
+            "example": strategy["example"],
+            "category": category,
             "news_type": news_type,
             "time_context": time_context,
-            "tone_instruction": strategy["tone"],
-            "structure_instruction": strategy["structure"],
-            "emoji_rule": strategy["emoji_rule"],
-            "question_rule": strategy["question_rule"],
-            "example": strategy["example"],
             "source": source,
             "title": title,
-            "content": content or "Detaylar linkte.",
+            "content": content or "Detay bulunmuyor.",
             "url": url,
         })
-        
-        # Post-processing: Kaynak belirtme kontrolü
-        if source.lower() not in result["reply"].lower():
-            result["reply"] = f"{source} haberi: {result['reply']}"
-        
-        return result
+
+        if not result.get("source_line"):
+            result["source_line"] = f"Kaynak: {source}"
+
+        final_message = self._build_final_message(result, url)
+
+        return {
+            "message": final_message,
+            "hook": result.get("hook", ""),
+            "summary": result.get("summary", ""),
+            "importance": result.get("importance", ""),
+            "source_line": result.get("source_line", f"Kaynak: {source}"),
+            "sentiment": result.get("sentiment", "neutral"),
+            "news_type": news_type,
+        }

@@ -5,41 +5,42 @@ from models.schemas import TweetRequest, TweetResponse
 from services.llm import GeminiService
 from core.exceptions import global_exception_handler, validation_exception_handler
 
-app = FastAPI(title="XNewsBot AI Engine (Gemini Powered)")
+app = FastAPI(title="Telegram News Bot AI Engine")
 
-# --- GLOBAL HATA YÖNETİMİ (MIDDLEWARE) ---
-# Tüm beklenmedik hataları (500) yakalar
 app.add_exception_handler(Exception, global_exception_handler)
-# Veri formatı hatalarını (422) yakalar ve düzenler
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
-# ----------------------------------------
 
-# Gemini servisini başlat
 ai_service = GeminiService()
+
 
 @app.get("/")
 def read_root():
-    return {"status": "Gemini AI Engine is Online", "model": "gemini-1.5-flash"}
+    return {"status": "Telegram AI Engine is Online", "model": "gemma-3-12b-it"}
 
-@app.post("/generate-tweet", response_model=TweetResponse)
+
+@app.post("/generate-message", response_model=TweetResponse)
 async def generate_tweet_endpoint(request: TweetRequest):
-    print(f"Gemini Çalışıyor: {request.title}...")
-    
-    # published_at parametresi eklendi
-    result = ai_service.generate_viral_tweet(
+    print(f"Telegram içerik üretimi: {request.title}...")
+
+    result = ai_service.generate_telegram_post(
         title=request.title,
         content=request.content,
         url=request.url,
         source=request.source,
         category=request.category,
-        published_at=request.published_at,  
+        published_at=request.published_at,
     )
-    
+
     return TweetResponse(
-        tweet=result["tweet"],
-        reply=result["reply"],
-        sentiment=result["sentiment"]
+        message=result["message"],
+        hook=result["hook"],
+        summary=result["summary"],
+        importance=result["importance"],
+        source_line=result["source_line"],
+        sentiment=result["sentiment"],
+        news_type=result["news_type"],
     )
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

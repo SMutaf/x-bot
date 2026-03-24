@@ -1,18 +1,22 @@
-from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
+from pydantic import BaseModel, Field
 
-# Go Backend'den gelecek veri formatı
+
 class TweetRequest(BaseModel):
     title: str
-    content: str = ""
+    content: str
     url: str
     source: str
-    category: str = "GENERAL"  # BREAKING / TECH / GENERAL
-    published_at: Optional[datetime] = None  # Haberin yayınlanma zamanı
+    category: str
+    published_at: Optional[datetime] = None
 
-# Go Backend'e döneceğimiz cevap formatı
+
 class TweetResponse(BaseModel):
-    tweet: str
-    reply: str
-    sentiment: str = "neutral"
+    message: str = Field(description="Telegram için hazırlanmış nihai mesaj")
+    hook: str = Field(description="İlk dikkat çekici satır")
+    summary: str = Field(description="Kısa haber özeti")
+    importance: str = Field(description="Neden önemli açıklaması")
+    source_line: str = Field(description="Kaynak satırı")
+    sentiment: str = Field(description="positive, negative veya neutral")
+    news_type: str = Field(description="TRAGEDY, BREAKING_SERIOUS, TECH_LAUNCH, ECONOMY_NEWS veya GENERAL_NEWS")

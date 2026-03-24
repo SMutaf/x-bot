@@ -44,9 +44,6 @@ func main() {
 	aiClient := ai.NewClient("http://localhost:8000")
 	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
 
-	go tgBot.ListenForApproval()
-	fmt.Println("Telegram Onay Servisi Aktif!")
-
 	breakingChannel := make(chan models.NewsItem, 100)
 	normalChannel := make(chan models.NewsItem, 200)
 
@@ -241,7 +238,7 @@ func processNews(
 		}
 	}
 
-	response, err := aiClient.GenerateTweet(
+	response, err := aiClient.GenerateTelegramPost(
 		item.Title,
 		item.Description,
 		item.Link,
@@ -262,24 +259,23 @@ func processNews(
 		return
 	}
 
-	if response.Tweet == "" {
-		fmt.Printf("AI boş tweet döndü: %s\n", item.Title)
+	if response.Message == "" {
+		fmt.Printf("AI boş cevap döndü: %s\n", item.Title)
 
 		monitor.RecordRejected(monitoring.RejectedNewsEvent{
 			Time:     time.Now(),
 			Title:    item.Title,
 			Category: string(item.Category),
 			Source:   item.Source,
-			Reason:   "ai-empty-tweet",
+			Reason:   "ai-empty-message",
 		})
 		return
 	}
 
-	fmt.Printf("AI cevap aldı - Tweet: %s... | Reply: %s...\n",
-		response.Tweet[:min(30, len(response.Tweet))],
-		response.Reply[:min(30, len(response.Reply))])
+	fmt.Printf("AI cevap aldı - Message: %s...\n",
+		response.Message[:min(60, len(response.Message))])
 
-	err = tgBot.RequestApproval(response.Tweet, item.Link, item.Source, string(item.Category), publishedTime)
+	err = tgBot.RequestApproval(response.Message, string(item.Category), publishedTime)
 	if err != nil {
 		fmt.Printf("Telegram Hatası: %v\n", err)
 

@@ -62,83 +62,29 @@ func escapeMarkdown(text string) string {
 	return replacer.Replace(text)
 }
 
-func (b *ApprovalBot) RequestApproval(tweet, link, source, category, publishedTime string) error {
-	safeTweet := escapeMarkdown(tweet)
-	safeLink := escapeMarkdown(link)
-
-	tweetWithLink := fmt.Sprintf("%s\n\n%s", safeTweet, safeLink)
-
-	tweetMsg := tgbotapi.NewMessage(b.ChatID, tweetWithLink)
-	tweetMsg.ParseMode = "MarkdownV2"
-	tweetMsg.DisableWebPagePreview = false
-
-	_, err := b.Bot.Send(tweetMsg)
-	if err != nil {
-		fmt.Printf("Tweet mesajı gönderilemedi: %v\n", err)
-		return err
-	}
-
-	safeSource := escapeMarkdown(source)
+func (b *ApprovalBot) RequestApproval(message, category, publishedTime string) error {
+	safeMessage := escapeMarkdown(message)
 	safeTime := escapeMarkdown(publishedTime)
 
-	metaText := fmt.Sprintf(
-		"%s\n\n*Kaynak:* %s\n*⏰ Yayınlanma:* %s\n\nOnaylıyor musun?",
+	finalText := fmt.Sprintf(
+		"%s\n\n%s\n\n*⏰ Yayınlanma:* %s",
 		categoryLabel(category),
-		safeSource,
+		safeMessage,
 		safeTime,
 	)
 
-	metaMsg := tgbotapi.NewMessage(b.ChatID, metaText)
-	metaMsg.ParseMode = "MarkdownV2"
-	metaMsg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Onayla", "approve"),
-			tgbotapi.NewInlineKeyboardButtonData("❌ Reddet", "reject"),
-		),
-	)
+	msg := tgbotapi.NewMessage(b.ChatID, finalText)
+	msg.ParseMode = "MarkdownV2"
+	msg.DisableWebPagePreview = false
 
-	_, err = b.Bot.Send(metaMsg)
+	_, err := b.Bot.Send(msg)
 	if err != nil {
-		fmt.Printf("❌ Meta mesaj gönderilemedi: %v\n", err)
+		fmt.Printf("Telegram mesajı gönderilemedi: %v\n", err)
 		return err
 	}
 
-	fmt.Printf("✅ Telegram'a gönderildi (2 mesaj): %s\n", tweet[:min(50, len(tweet))])
+	fmt.Printf("✅ Telegram'a gönderildi: %s\n", message[:min(50, len(message))])
 	return nil
-}
-
-func (b *ApprovalBot) ListenForApproval() {
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-	updates := b.Bot.GetUpdatesChan(u)
-
-	for update := range updates {
-		if update.CallbackQuery == nil {
-			continue
-		}
-
-		callback := update.CallbackQuery
-		b.Bot.Request(tgbotapi.NewCallback(callback.ID, "İşlem yapılıyor..."))
-
-		originalText := callback.Message.Text
-		var newText string
-
-		if callback.Data == "approve" {
-			newText = originalText + "\n\n*ONAYLANDI VE PAYLAŞILDI\\!*"
-			fmt.Println("🚀 Tweet onaylandı.")
-		} else if callback.Data == "reject" {
-			newText = originalText + "\n\n*REDDEDİLDİ\\.*"
-			fmt.Println("🗑️ İçerik reddedildi.")
-		}
-
-		editMsg := tgbotapi.NewEditMessageText(
-			b.ChatID,
-			callback.Message.MessageID,
-			newText,
-		)
-		editMsg.ParseMode = "MarkdownV2"
-		b.Bot.Send(editMsg)
-	}
 }
 
 func min(a, b int) int {
