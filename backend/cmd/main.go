@@ -15,7 +15,7 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/middleware"
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
 	"github.com/SMutaf/twitter-bot/backend/internal/monitoring"
-	"github.com/SMutaf/twitter-bot/backend/internal/policy"
+	"github.com/SMutaf/twitter-bot/backend/internal/pipeline"
 	"github.com/SMutaf/twitter-bot/backend/internal/scoring"
 	"github.com/SMutaf/twitter-bot/backend/internal/scraper"
 	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
@@ -43,6 +43,14 @@ func main() {
 
 	aiClient := ai.NewClient("http://localhost:8000")
 	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
+
+	processor := pipeline.NewProcessor(
+		newsScorer,
+		aiClient,
+		tgBot,
+		clusterer,
+		monitor,
+	)
 
 	breakingChannel := make(chan models.NewsItem, 100)
 	normalChannel := make(chan models.NewsItem, 200)
@@ -93,9 +101,9 @@ func main() {
 				select {
 				case item := <-normalChannel:
 					fmt.Println("[DENGE] Normal kanala geçiliyor...")
-					limiter.Wait(context.Background())
+					_ = limiter.Wait(context.Background())
 					middleware.RecoveryWrapper("Normal News Worker", func() {
-						processNews(item, aiClient, tgBot, newsScorer, clusterer, monitor)
+						_ = processor.Process(item)
 					})
 					breakingStreak = 0
 					continue
@@ -107,17 +115,17 @@ func main() {
 
 			select {
 			case item := <-breakingChannel:
-				limiter.Wait(context.Background())
+				_ = limiter.Wait(context.Background())
 				middleware.RecoveryWrapper("Breaking News Worker", func() {
-					processNews(item, aiClient, tgBot, newsScorer, clusterer, monitor)
+					_ = processor.Process(item)
 				})
 				breakingStreak++
 				fmt.Printf("Breaking streak: %d/%d\n", breakingStreak, maxBreakingStreak)
 
 			case item := <-normalChannel:
-				limiter.Wait(context.Background())
+				_ = limiter.Wait(context.Background())
 				middleware.RecoveryWrapper("Normal News Worker", func() {
-					processNews(item, aiClient, tgBot, newsScorer, clusterer, monitor)
+					_ = processor.Process(item)
 				})
 				breakingStreak = 0
 
@@ -144,169 +152,4 @@ func main() {
 
 	fmt.Println("Tüm kaynaklar aktif. Bot çalışıyor...")
 	select {}
-}
-
-func processNews(
-	item models.NewsItem,
-	aiClient *ai.Client,
-	tgBot *telegram.ApprovalBot,
-	newsScorer *scoring.NewsScorer,
-	clusterer *eventcluster.EventClusterer,
-	monitor *monitoring.Manager,
-) {
-	catPolicy := policy.Get(item.Category)
-
-	if item.ClusterCount < catPolicy.MinClusterCount {
-		fmt.Printf("[HARD FILTER] %s için yetersiz kaynak (%d < %d): %s\n",
-			item.Category, item.ClusterCount, catPolicy.MinClusterCount, item.Title)
-
-		monitor.RecordRejected(monitoring.RejectedNewsEvent{
-			Time:     time.Now(),
-			Title:    item.Title,
-			Category: string(item.Category),
-			Source:   item.Source,
-			Reason:   "process-min-cluster",
-		})
-		return
-	}
-
-	if item.ClusterKey != "" && clusterer.WasSentRecently(item.ClusterKey) {
-		fmt.Printf("[EVENT DEDUPE] Aynı event yakın zamanda gönderilmiş, atlandı: %s\n", item.Title)
-
-		monitor.RecordRejected(monitoring.RejectedNewsEvent{
-			Time:     time.Now(),
-			Title:    item.Title,
-			Category: string(item.Category),
-			Source:   item.Source,
-			Reason:   "event-dedupe",
-		})
-		return
-	}
-
-	score := newsScorer.Calculate(item)
-	fmt.Printf("[%s] Virality: %d (%s) | ClusterCount: %d | Boost: +%d | %s\n",
-		item.Category, score.Final, newsScorer.GetViralityLevel(score.Final), item.ClusterCount, item.Score, item.Title)
-
-	if score.Final < catPolicy.MinVirality {
-		if !(policy.IsCriticalEvent(item) && policy.IsAcceptableCriticalAge(item, catPolicy)) {
-			fmt.Printf("[VIRALITY FILTER] Elendi (score:%d < min:%d): %s\n",
-				score.Final, catPolicy.MinVirality, item.Title)
-
-			monitor.RecordRejected(monitoring.RejectedNewsEvent{
-				Time:     time.Now(),
-				Title:    item.Title,
-				Category: string(item.Category),
-				Source:   item.Source,
-				Reason:   "virality-filter",
-			})
-			return
-		}
-		fmt.Printf("[CRITICAL OVERRIDE] Düşük skora rağmen geçirildi: %s\n", item.Title)
-	}
-
-	loc, _ := time.LoadLocation("Europe/Istanbul")
-	now := time.Now().In(loc)
-	hour := now.Hour()
-
-	if item.Category == models.CategoryTech {
-		if !((hour >= 8 && hour < 11) || (hour >= 13 && hour < 15) || (hour >= 18 && hour <= 22)) {
-			fmt.Printf("[SAAT FİLTRE] Gönderilmiyor: %s\n", item.Title)
-
-			monitor.RecordRejected(monitoring.RejectedNewsEvent{
-				Time:     time.Now(),
-				Title:    item.Title,
-				Category: string(item.Category),
-				Source:   item.Source,
-				Reason:   "tech-time-filter",
-			})
-			return
-		}
-	}
-
-	publishedTime := ""
-	if !item.PublishedAt.IsZero() {
-		diff := time.Since(item.PublishedAt)
-		switch {
-		case diff < 5*time.Minute:
-			publishedTime = "🔴 ŞU AN"
-		case diff < 30*time.Minute:
-			publishedTime = fmt.Sprintf("%d dk önce", int(diff.Minutes()))
-		case diff < 2*time.Hour:
-			publishedTime = fmt.Sprintf("%d saat önce", int(diff.Hours()))
-		default:
-			publishedTime = item.PublishedAt.In(loc).Format("15:04")
-		}
-	}
-
-	response, err := aiClient.GenerateTelegramPost(
-		item.Title,
-		item.Description,
-		item.Link,
-		item.Source,
-		string(item.Category),
-		item.PublishedAt,
-	)
-	if err != nil {
-		fmt.Printf("AI Hatası (%s): %v\n", item.Title, err)
-
-		monitor.RecordRejected(monitoring.RejectedNewsEvent{
-			Time:     time.Now(),
-			Title:    item.Title,
-			Category: string(item.Category),
-			Source:   item.Source,
-			Reason:   "ai-error",
-		})
-		return
-	}
-
-	if response.Message == "" {
-		fmt.Printf("AI boş cevap döndü: %s\n", item.Title)
-
-		monitor.RecordRejected(monitoring.RejectedNewsEvent{
-			Time:     time.Now(),
-			Title:    item.Title,
-			Category: string(item.Category),
-			Source:   item.Source,
-			Reason:   "ai-empty-message",
-		})
-		return
-	}
-
-	fmt.Printf("AI cevap aldı - Message: %s...\n",
-		response.Message[:min(60, len(response.Message))])
-
-	err = tgBot.RequestApproval(response.Message, string(item.Category), publishedTime)
-	if err != nil {
-		fmt.Printf("Telegram Hatası: %v\n", err)
-
-		monitor.RecordRejected(monitoring.RejectedNewsEvent{
-			Time:     time.Now(),
-			Title:    item.Title,
-			Category: string(item.Category),
-			Source:   item.Source,
-			Reason:   "telegram-error",
-		})
-		return
-	}
-
-	monitor.RecordPublished(monitoring.PublishedNewsEvent{
-		Time:         time.Now(),
-		Title:        item.Title,
-		Category:     string(item.Category),
-		Source:       item.Source,
-		Link:         item.Link,
-		Virality:     score.Final,
-		ClusterCount: item.ClusterCount,
-	})
-
-	if item.ClusterKey != "" {
-		clusterer.MarkSent(item.ClusterKey, catPolicy.DedupeCooldown)
-	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
