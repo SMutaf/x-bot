@@ -55,7 +55,7 @@ func main() {
 	breakingChannel := make(chan models.NewsItem, 100)
 	normalChannel := make(chan models.NewsItem, 200)
 
-	newsFilter := filter.NewNewsFilter(44, 38)
+	newsFilter := filter.NewNewsFilter()
 	sc := scraper.NewRSSScraper(
 		cache,
 		breakingChannel,

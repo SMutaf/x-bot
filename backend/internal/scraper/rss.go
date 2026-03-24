@@ -185,7 +185,7 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 		newsItem.ClusterCount = sourceCount
 		newsItem.ClusterKey = clusterKey
 
-		allowed, reason := s.Filter.ShouldProcess(newsItem, boost)
+		allowed, reason := s.Filter.ShouldProcess(newsItem)
 		if !allowed {
 			fmt.Printf("[FİLTRE] Elendi (%s): %s\n", reason, item.Title)
 			s.recordRejected(newsItem, reason)

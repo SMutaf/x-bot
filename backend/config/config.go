@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -11,9 +13,15 @@ import (
 )
 
 type RSSSource struct {
-	URL      string
-	Category models.NewsCategory
-	Interval time.Duration
+	URL      string              `json:"url"`
+	Category models.NewsCategory `json:"category"`
+	Interval time.Duration       `json:"interval"`
+}
+
+type rawRSSSource struct {
+	URL      string              `json:"url"`
+	Category models.NewsCategory `json:"category"`
+	Interval string              `json:"interval"`
 }
 
 type Config struct {
@@ -32,94 +40,62 @@ func LoadConfig() *Config {
 
 	chatID, _ := strconv.ParseInt(os.Getenv("TELEGRAM_CHAT_ID"), 10, 64)
 
+	sources, err := loadSources(getEnv("SOURCES_FILE", "config/sources.json"))
+	if err != nil {
+		log.Fatalf("RSS kaynakları yüklenemedi: %v", err)
+	}
+
 	return &Config{
-		RSSSources: []RSSSource{
-			{
-				URL:      "https://feeds.bbci.co.uk/news/world/rss.xml",
-				Category: models.CategoryBreaking,
-				Interval: 2 * time.Minute,
-			},
-			{
-				URL:      "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
-				Category: models.CategoryBreaking,
-				Interval: 2 * time.Minute,
-			},
-			{
-				URL:      "https://feeds.npr.org/1001/rss.xml",
-				Category: models.CategoryBreaking,
-				Interval: 2 * time.Minute,
-			},
-			{
-				URL:      "https://www.aljazeera.com/xml/rss/all.xml",
-				Category: models.CategoryBreaking,
-				Interval: 2 * time.Minute,
-			},
-			{
-				URL:      "https://www.theguardian.com/world/rss",
-				Category: models.CategoryBreaking,
-				Interval: 3 * time.Minute,
-			},
-			{
-				URL:      "https://feeds.bloomberg.com/markets/news.rss",
-				Category: models.CategoryEconomy,
-				Interval: 5 * time.Minute,
-			},
-			{
-				URL:      "https://www.ft.com/rss/home",
-				Category: models.CategoryEconomy,
-				Interval: 5 * time.Minute,
-			},
-			{
-				URL:      "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-				Category: models.CategoryEconomy,
-				Interval: 5 * time.Minute,
-			},
-			{
-				URL:      "https://feeds.marketwatch.com/marketwatch/topstories",
-				Category: models.CategoryEconomy,
-				Interval: 5 * time.Minute,
-			},
-			{
-				URL:      "https://www.webtekno.com/rss.xml",
-				Category: models.CategoryTech,
-				Interval: 10 * time.Minute,
-			},
-			{
-				URL:      "https://techcrunch.com/feed/",
-				Category: models.CategoryTech,
-				Interval: 10 * time.Minute,
-			},
-			{
-				URL:      "https://www.theverge.com/rss/index.xml",
-				Category: models.CategoryTech,
-				Interval: 10 * time.Minute,
-			},
-			{
-				URL:      "https://feeds.arstechnica.com/arstechnica/index",
-				Category: models.CategoryTech,
-				Interval: 10 * time.Minute,
-			},
-			{
-				URL:      "https://www.aa.com.tr/tr/rss/default?cat=guncel",
-				Category: models.CategoryGeneral,
-				Interval: 3 * time.Minute,
-			},
-			{
-				URL:      "https://www.trthaber.com/sondakika.rss",
-				Category: models.CategoryGeneral,
-				Interval: 3 * time.Minute,
-			},
-			{
-				URL:      "https://www.bloomberght.com/rss",
-				Category: models.CategoryGeneral,
-				Interval: 5 * time.Minute,
-			},
-		},
+		RSSSources:       sources,
 		RedisAddr:        getEnv("REDIS_ADDR", "localhost:6379"),
 		TelegramToken:    os.Getenv("TELEGRAM_TOKEN"),
 		TelegramChatID:   chatID,
-		MaxNewsPerSource: 8,
+		MaxNewsPerSource: getEnvAsInt("MAX_NEWS_PER_SOURCE", 8),
 	}
+}
+
+func loadSources(path string) ([]RSSSource, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("sources dosyası okunamadı (%s): %w", path, err)
+	}
+
+	var rawSources []rawRSSSource
+	if err := json.Unmarshal(data, &rawSources); err != nil {
+		return nil, fmt.Errorf("sources dosyası parse edilemedi (%s): %w", path, err)
+	}
+
+	if len(rawSources) == 0 {
+		return nil, fmt.Errorf("sources dosyası boş (%s)", path)
+	}
+
+	sources := make([]RSSSource, 0, len(rawSources))
+
+	for i, raw := range rawSources {
+		if raw.URL == "" {
+			return nil, fmt.Errorf("sources[%d] için url boş", i)
+		}
+		if raw.Category == "" {
+			return nil, fmt.Errorf("sources[%d] için category boş", i)
+		}
+		if raw.Interval == "" {
+			return nil, fmt.Errorf("sources[%d] için interval boş", i)
+		}
+
+		interval, err := time.ParseDuration(raw.Interval)
+		if err != nil {
+			return nil, fmt.Errorf("sources[%d] interval parse edilemedi (%s): %w", i, raw.Interval, err)
+		}
+
+		sources = append(sources, RSSSource{
+			URL:      raw.URL,
+			Category: raw.Category,
+			Interval: interval,
+		})
+	}
+
+	log.Printf("Toplam %d RSS kaynağı yüklendi: %s", len(sources), path)
+	return sources, nil
 }
 
 func getEnv(key, fallback string) string {
@@ -127,4 +103,23 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func getEnvAsInt(key string, fallback int) int {
+	value, ok := os.LookupEnv(key)
+	if !ok || value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		log.Printf("%s parse edilemedi (%s), fallback kullanılacak: %d", key, value, fallback)
+		return fallback
+	}
+
+	return parsed
+}
+
+func (r RSSSource) String() string {
+	return fmt.Sprintf("[%s | %s] %s", r.Category, r.Interval, r.URL)
 }

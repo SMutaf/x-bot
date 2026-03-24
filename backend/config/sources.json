@@ -1,0 +1,82 @@
+[
+  {
+    "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+    "category": "BREAKING",
+    "interval": "2m"
+  },
+  {
+    "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+    "category": "BREAKING",
+    "interval": "2m"
+  },
+  {
+    "url": "https://feeds.npr.org/1001/rss.xml",
+    "category": "BREAKING",
+    "interval": "2m"
+  },
+  {
+    "url": "https://www.aljazeera.com/xml/rss/all.xml",
+    "category": "BREAKING",
+    "interval": "2m"
+  },
+  {
+    "url": "https://www.theguardian.com/world/rss",
+    "category": "BREAKING",
+    "interval": "3m"
+  },
+  {
+    "url": "https://feeds.bloomberg.com/markets/news.rss",
+    "category": "ECONOMY",
+    "interval": "5m"
+  },
+  {
+    "url": "https://www.ft.com/rss/home",
+    "category": "ECONOMY",
+    "interval": "5m"
+  },
+  {
+    "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+    "category": "ECONOMY",
+    "interval": "5m"
+  },
+  {
+    "url": "https://feeds.marketwatch.com/marketwatch/topstories",
+    "category": "ECONOMY",
+    "interval": "5m"
+  },
+  {
+    "url": "https://www.webtekno.com/rss.xml",
+    "category": "TECH",
+    "interval": "10m"
+  },
+  {
+    "url": "https://techcrunch.com/feed/",
+    "category": "TECH",
+    "interval": "10m"
+  },
+  {
+    "url": "https://www.theverge.com/rss/index.xml",
+    "category": "TECH",
+    "interval": "10m"
+  },
+  {
+    "url": "https://feeds.arstechnica.com/arstechnica/index",
+    "category": "TECH",
+    "interval": "10m"
+  },
+  {
+    "url": "https://www.aa.com.tr/tr/rss/default?cat=guncel",
+    "category": "GENERAL",
+    "interval": "3m"
+  },
+  {
+    "url": "https://www.trthaber.com/sondakika.rss",
+    "category": "GENERAL",
+    "interval": "3m"
+  },
+  {
+    "url": "https://www.bloomberght.com/rss",
+    "category": "GENERAL",
+    "interval": "5m"
+  }
+]
