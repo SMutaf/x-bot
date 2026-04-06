@@ -92,6 +92,23 @@ func (p *Processor) Process(item models.NewsItem) error {
 		return err
 	}
 
+	if response.Decision == "reject" {
+		reason := response.RejectReason
+		if reason == "" {
+			reason = "llm-editorial-reject"
+		}
+
+		fmt.Printf("LLM editoryal olarak reddetti (%s): %s\n", reason, item.Title)
+		p.recordRejected(item, "llm-"+reason)
+		return nil
+	}
+
+	if response.Decision != "publish" {
+		fmt.Printf("AI geçersiz decision döndü (%s): %s\n", response.Decision, item.Title)
+		p.recordRejected(item, "ai-invalid-decision")
+		return nil
+	}
+
 	if response.Message == "" {
 		fmt.Printf("AI boş cevap döndü: %s\n", item.Title)
 		p.recordRejected(item, "ai-empty-message")

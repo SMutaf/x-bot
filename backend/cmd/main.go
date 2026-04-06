@@ -103,7 +103,10 @@ func main() {
 					fmt.Println("[DENGE] Normal kanala geçiliyor...")
 					_ = limiter.Wait(context.Background())
 					middleware.RecoveryWrapper("Normal News Worker", func() {
-						_ = processor.Process(item)
+						// DÜZELTME: hata artık loglanıyor
+						if err := processor.Process(item); err != nil {
+							fmt.Printf("[PROCESS HATA] Normal News Worker: %v (haber: %s)\n", err, item.Title)
+						}
 					})
 					breakingStreak = 0
 					continue
@@ -117,7 +120,9 @@ func main() {
 			case item := <-breakingChannel:
 				_ = limiter.Wait(context.Background())
 				middleware.RecoveryWrapper("Breaking News Worker", func() {
-					_ = processor.Process(item)
+					if err := processor.Process(item); err != nil {
+						fmt.Printf("[PROCESS HATA] Breaking News Worker: %v (haber: %s)\n", err, item.Title)
+					}
 				})
 				breakingStreak++
 				fmt.Printf("Breaking streak: %d/%d\n", breakingStreak, maxBreakingStreak)
@@ -125,7 +130,9 @@ func main() {
 			case item := <-normalChannel:
 				_ = limiter.Wait(context.Background())
 				middleware.RecoveryWrapper("Normal News Worker", func() {
-					_ = processor.Process(item)
+					if err := processor.Process(item); err != nil {
+						fmt.Printf("[PROCESS HATA] Normal News Worker: %v (haber: %s)\n", err, item.Title)
+					}
 				})
 				breakingStreak = 0
 

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -18,13 +20,16 @@ type MessageRequest struct {
 }
 
 type MessageResponse struct {
-	Message    string `json:"message"`
-	Hook       string `json:"hook"`
-	Summary    string `json:"summary"`
-	Importance string `json:"importance"`
-	SourceLine string `json:"source_line"`
-	Sentiment  string `json:"sentiment"`
-	NewsType   string `json:"news_type"`
+	Decision     string `json:"decision"`
+	RejectReason string `json:"reject_reason,omitempty"`
+
+	Message    string `json:"message,omitempty"`
+	Hook       string `json:"hook,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+	Importance string `json:"importance,omitempty"`
+	SourceLine string `json:"source_line,omitempty"`
+	Sentiment  string `json:"sentiment,omitempty"`
+	NewsType   string `json:"news_type,omitempty"`
 }
 
 type Client struct {
@@ -56,7 +61,10 @@ func (c *Client) GenerateTelegramPost(title, content, url, source, category stri
 		PublishedAt: pubAt,
 	}
 
-	jsonValue, _ := json.Marshal(reqBody)
+	jsonValue, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("istek JSON'a çevrilemedi: %v", err)
+	}
 
 	resp, err := c.HTTPClient.Post(c.BaseURL+"/generate-message", "application/json", bytes.NewBuffer(jsonValue))
 	if err != nil {
@@ -65,12 +73,19 @@ func (c *Client) GenerateTelegramPost(title, content, url, source, category stri
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("AI servisi hata döndü: %d", resp.StatusCode)
+		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		if err != nil {
+			return nil, fmt.Errorf("AI servisi hata döndü [%d]: (body okunamadı: %v)", resp.StatusCode, err)
+		}
+		return nil, fmt.Errorf("AI servisi hata döndü [%d]: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
 	}
-
 	var out MessageResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, fmt.Errorf("cevap okunamadı: %v", err)
+	}
+
+	if out.Decision == "" {
+		return nil, fmt.Errorf("AI cevabında decision alanı yok")
 	}
 
 	return &out, nil

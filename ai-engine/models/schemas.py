@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal
 from pydantic import BaseModel, Field
 
 
@@ -13,10 +13,39 @@ class TweetRequest(BaseModel):
 
 
 class TweetResponse(BaseModel):
-    message: str = Field(description="Telegram için hazırlanmış nihai mesaj")
-    hook: str = Field(description="İlk dikkat çekici satır")
-    summary: str = Field(description="Kısa haber özeti")
-    importance: str = Field(description="Neden önemli açıklaması")
-    source_line: str = Field(description="Kaynak satırı")
-    sentiment: str = Field(description="positive, negative veya neutral")
-    news_type: str = Field(description="TRAGEDY, BREAKING_SERIOUS, TECH_LAUNCH, ECONOMY_NEWS veya GENERAL_NEWS")
+    decision: Literal["publish", "reject"] = Field(
+        description="LLM editoryal kararı: publish veya reject"
+    )
+    reject_reason: Optional[str] = Field(
+        default="",
+        description="Reject ise kısa sebep"
+    )
+
+    message: str = Field(
+        default="",
+        description="Telegram için hazırlanmış nihai mesaj"
+    )
+    hook: str = Field(
+        default="",
+        description="İlk dikkat çekici satır"
+    )
+    summary: str = Field(
+        default="",
+        description="Kısa haber özeti"
+    )
+    importance: str = Field(
+        default="",
+        description="Neden önemli açıklaması"
+    )
+    source_line: str = Field(
+        default="",
+        description="Kaynak satırı"
+    )
+    sentiment: str = Field(
+        default="",
+        description="positive, negative veya neutral"
+    )
+    news_type: str = Field(
+        default="",
+        description="TRAGEDY, BREAKING_SERIOUS, TECH_LAUNCH, ECONOMY_NEWS veya GENERAL_NEWS"
+    )

@@ -1,6 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+
 from models.schemas import TweetRequest, TweetResponse
 from services.llm import GeminiService
 from core.exceptions import global_exception_handler, validation_exception_handler
@@ -32,13 +33,15 @@ async def generate_tweet_endpoint(request: TweetRequest):
     )
 
     return TweetResponse(
-        message=result["message"],
-        hook=result["hook"],
-        summary=result["summary"],
-        importance=result["importance"],
-        source_line=result["source_line"],
-        sentiment=result["sentiment"],
-        news_type=result["news_type"],
+        decision=result.get("decision", "reject"),
+        reject_reason=result.get("reject_reason", ""),
+        message=result.get("message", ""),
+        hook=result.get("hook", ""),
+        summary=result.get("summary", ""),
+        importance=result.get("importance", ""),
+        source_line=result.get("source_line", ""),
+        sentiment=result.get("sentiment", ""),
+        news_type=result.get("news_type", ""),
     )
 
 
