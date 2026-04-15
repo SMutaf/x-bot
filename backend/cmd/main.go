@@ -19,6 +19,7 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/scoring"
 	"github.com/SMutaf/twitter-bot/backend/internal/scraper"
 	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
+	"github.com/SMutaf/twitter-bot/backend/internal/stream"
 	"github.com/SMutaf/twitter-bot/backend/internal/telegram"
 	"golang.org/x/time/rate"
 )
@@ -70,6 +71,7 @@ func main() {
 	go func() {
 		mux := http.NewServeMux()
 		api := dashboardapi.NewHandler(monitor, healthManager)
+		mux.HandleFunc("/api/feed/stream", stream.StreamHandler)
 		api.Register(mux)
 
 		handler := dashboardapi.WithCORS(mux)
