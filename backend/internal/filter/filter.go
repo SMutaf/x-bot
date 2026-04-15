@@ -8,15 +8,15 @@ func NewNewsFilter() *NewsFilter {
 	return &NewsFilter{}
 }
 
-func (f *NewsFilter) ShouldProcess(item models.NewsItem) (bool, string) {
-	title := normalize(item.Title)
-	text := normalize(item.Title + " " + item.Description)
+func (f *NewsFilter) ShouldProcess(env models.NewsEnvelope) (bool, string) {
+	title := normalize(env.News.Title)
+	text := normalize(env.News.Title + " " + env.News.Description)
 
 	if IsBackground(title) {
 		return false, "background-analysis"
 	}
 
-	switch item.Category {
+	switch env.News.Category {
 	case models.CategoryBreaking:
 		if !IsBreakingRelevant(text) {
 			return false, "breaking-not-relevant"

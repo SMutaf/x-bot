@@ -65,31 +65,33 @@ func Get(category models.NewsCategory) CategoryPolicy {
 	}
 }
 
-func IsFreshEnough(item models.NewsItem, policy CategoryPolicy) bool {
-	if item.PublishedAt.IsZero() {
+func IsFreshEnough(env models.NewsEnvelope, policy CategoryPolicy) bool {
+	publishedAt := env.News.PublishedAt
+	if publishedAt.IsZero() {
 		return true
 	}
 
-	diff := time.Since(item.PublishedAt)
+	diff := time.Since(publishedAt)
 	if diff <= policy.MaxAge {
 		return true
 	}
 
-	if IsCriticalEvent(item) && IsAcceptableCriticalAge(item, policy) {
+	if IsCriticalEvent(env, policy) && IsAcceptableCriticalAge(env, policy) {
 		return true
 	}
 
 	return false
 }
 
-func IsAcceptableCriticalAge(item models.NewsItem, _ CategoryPolicy) bool {
-	if item.PublishedAt.IsZero() {
+func IsAcceptableCriticalAge(env models.NewsEnvelope, _ CategoryPolicy) bool {
+	publishedAt := env.News.PublishedAt
+	if publishedAt.IsZero() {
 		return true
 	}
 
-	diff := time.Since(item.PublishedAt)
+	diff := time.Since(publishedAt)
 
-	switch item.Category {
+	switch env.News.Category {
 	case models.CategoryBreaking:
 		return diff <= 3*time.Hour
 	case models.CategoryEconomy:

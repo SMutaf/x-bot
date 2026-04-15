@@ -37,8 +37,8 @@ func (t *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 type RSSScraper struct {
 	Parser          *gofeed.Parser
 	Cache           *dedup.Deduplicator
-	BreakingChannel chan<- models.NewsItem
-	NormalChannel   chan<- models.NewsItem
+	BreakingChannel chan<- models.NewsEnvelope
+	NormalChannel   chan<- models.NewsEnvelope
 	MaxPerSource    int
 	Filter          *filter.NewsFilter
 	Clusterer       *eventcluster.EventClusterer
@@ -48,8 +48,8 @@ type RSSScraper struct {
 
 func NewRSSScraper(
 	cache *dedup.Deduplicator,
-	breakingCh chan<- models.NewsItem,
-	normalCh chan<- models.NewsItem,
+	breakingCh chan<- models.NewsEnvelope,
+	normalCh chan<- models.NewsEnvelope,
 	maxPerSource int,
 	f *filter.NewsFilter,
 	ec *eventcluster.EventClusterer,
@@ -83,8 +83,7 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 	if s.HealthManager != nil {
 		shouldSkip, status := s.HealthManager.ShouldSkip(source, sourceName)
 		if shouldSkip {
-			fmt.Printf(
-				"[SOURCE HEALTH] source=%s category=%s skipped=true disabledUntil=%s consecutiveFails=%d lastErrorType=%s\n",
+			fmt.Printf("[SOURCE HEALTH] source=%s category=%s skipped=true disabledUntil=%s consecutiveFails=%d lastErrorType=%s\n",
 				sourceName,
 				source.Category,
 				status.DisabledUntil.Format(time.RFC3339),
@@ -102,8 +101,7 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 
 		if s.HealthManager != nil {
 			status := s.HealthManager.RecordFailure(source, sourceName, errType, err.Error())
-			fmt.Printf(
-				"[RSS ERROR] source=%s category=%s type=%s url=%s err=%v consecutiveFails=%d disabledUntil=%s\n",
+			fmt.Printf("[RSS ERROR] source=%s category=%s type=%s url=%s err=%v consecutiveFails=%d disabledUntil=%s\n",
 				sourceName,
 				source.Category,
 				errType,
@@ -171,38 +169,51 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 			publishedAt = time.Now()
 		}
 
-		newsItem := models.NewsItem{
+		raw := models.RawNewsItem{
 			Title:       item.Title,
 			Description: item.Description,
 			Link:        item.Link,
 			Source:      feed.Title,
 			Category:    source.Category,
 			PublishedAt: publishedAt,
+			FetchedAt:   time.Now(),
+		}
+		raw.ID = raw.BuildID()
+
+		env := models.NewEnvelope(raw)
+
+		boost, sourceCount, clusterKey := s.Clusterer.AddEvent(raw)
+		env.Cluster = models.ClusterInfo{
+			ClusterKey:   clusterKey,
+			ClusterCount: sourceCount,
+			IsClustered:  sourceCount > 1,
+		}
+		env.Score.Boost = boost
+		env.Stage = models.StageClustered
+
+		allowed, reason := s.Filter.ShouldProcess(env)
+		env.Filter = models.FilterDecision{
+			Passed: allowed,
+			Reason: reason,
 		}
 
-		boost, sourceCount, clusterKey := s.Clusterer.AddEvent(newsItem)
-		newsItem.Score = boost
-		newsItem.ClusterCount = sourceCount
-		newsItem.ClusterKey = clusterKey
-
-		allowed, reason := s.Filter.ShouldProcess(newsItem)
 		if !allowed {
 			fmt.Printf("[FİLTRE] Elendi (%s): %s\n", reason, item.Title)
-			s.recordRejected(newsItem, reason)
+			s.recordRejected(env, reason)
 			continue
 		}
 
-		catPolicy := policy.Get(newsItem.Category)
-		if !policy.IsFreshEnough(newsItem, catPolicy) {
-			fmt.Printf("[FRESHNESS FILTER] Çok eski haber, atıldı: %s\n", newsItem.Title)
-			s.recordRejected(newsItem, "freshness-filter")
+		catPolicy := policy.Get(env.News.Category)
+		if !policy.IsFreshEnough(env, catPolicy) {
+			fmt.Printf("[FRESHNESS FILTER] Çok eski haber, atıldı: %s\n", env.News.Title)
+			s.recordRejected(env, "freshness-filter")
 			continue
 		}
 
-		if newsItem.Category == models.CategoryBreaking && newsItem.ClusterCount < 2 {
+		if env.News.Category == models.CategoryBreaking && env.Cluster.ClusterCount < 2 {
 			fmt.Printf("[HARD FILTER] BREAKING için yetersiz kaynak (%d < 2): %s\n",
-				newsItem.ClusterCount, newsItem.Title)
-			s.recordRejected(newsItem, "breaking-min-cluster")
+				env.Cluster.ClusterCount, env.News.Title)
+			s.recordRejected(env, "breaking-min-cluster")
 			continue
 		}
 
@@ -210,23 +221,21 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 
 		if source.Category == models.CategoryBreaking {
 			select {
-			case s.BreakingChannel <- newsItem:
-				fmt.Printf("[BREAKING] Kanala eklendi [%d/%d]: %s\n",
-					count+1, s.MaxPerSource, item.Title)
+			case s.BreakingChannel <- env:
+				fmt.Printf("[BREAKING] Kanala eklendi [%d/%d]: %s\n", count+1, s.MaxPerSource, item.Title)
 				count++
 			default:
 				fmt.Println("[BREAKING] Channel dolu, atlandı:", item.Title)
-				s.recordRejected(newsItem, "breaking-channel-full")
+				s.recordRejected(env, "breaking-channel-full")
 			}
 		} else {
 			select {
-			case s.NormalChannel <- newsItem:
-				fmt.Printf("[%s] Kanala eklendi [%d/%d]: %s\n",
-					source.Category, count+1, s.MaxPerSource, item.Title)
+			case s.NormalChannel <- env:
+				fmt.Printf("[%s] Kanala eklendi [%d/%d]: %s\n", source.Category, count+1, s.MaxPerSource, item.Title)
 				count++
 			default:
 				fmt.Println("[NORMAL] Channel dolu, atlandı:", item.Title)
-				s.recordRejected(newsItem, "normal-channel-full")
+				s.recordRejected(env, "normal-channel-full")
 			}
 		}
 	}
@@ -267,16 +276,16 @@ func (s *RSSScraper) fetchWithRetry(source config.RSSSource) (*gofeed.Feed, erro
 	return nil, lastErr
 }
 
-func (s *RSSScraper) recordRejected(item models.NewsItem, reason string) {
+func (s *RSSScraper) recordRejected(env models.NewsEnvelope, reason string) {
 	if s.Monitoring == nil {
 		return
 	}
 
 	s.Monitoring.RecordRejected(monitoring.RejectedNewsEvent{
 		Time:     time.Now(),
-		Title:    item.Title,
-		Category: string(item.Category),
-		Source:   item.Source,
+		Title:    env.News.Title,
+		Category: string(env.News.Category),
+		Source:   env.News.Source,
 		Reason:   reason,
 	})
 }

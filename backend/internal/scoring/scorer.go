@@ -17,15 +17,15 @@ func NewNewsScorer(redisClient *redis.Client) *NewsScorer {
 	}
 }
 
-func (s *NewsScorer) Calculate(item models.NewsItem) ScoreBreakdown {
-	cScore := ClusterScore(item.ClusterCount)
-	rScore := RecencyScore(item.PublishedAt)
-	bScore := s.burstProvider.Score(item)
-	kScore := KeywordScore(item.Title + " " + item.Description)
+func (s *NewsScorer) Calculate(env models.NewsEnvelope) models.ScoreBreakdown {
+	cScore := ClusterScore(env.Cluster.ClusterCount)
+	rScore := RecencyScore(env.News.PublishedAt)
+	bScore := s.burstProvider.Score(env)
+	kScore := KeywordScore(env.News.Title + " " + env.News.Description)
 
 	var raw float64
 
-	switch item.Category {
+	switch env.News.Category {
 	case models.CategoryBreaking:
 		raw = (cScore * 0.58) + (rScore * 0.24) + (bScore * 0.12) + (kScore * 0.06)
 	case models.CategoryGeneral:
@@ -42,15 +42,16 @@ func (s *NewsScorer) Calculate(item models.NewsItem) ScoreBreakdown {
 
 	fmt.Printf(
 		"[VIRALITY DETAIL] cluster:%.0f recency:%.0f burst:%.0f keyword:%.0f => %d | %s\n",
-		cScore, rScore, bScore, kScore, final, item.Title,
+		cScore, rScore, bScore, kScore, final, env.News.Title,
 	)
 
-	return ScoreBreakdown{
+	return models.ScoreBreakdown{
 		Cluster: cScore,
 		Recency: rScore,
 		Burst:   bScore,
 		Keyword: kScore,
 		Final:   final,
+		Boost:   0,
 	}
 }
 

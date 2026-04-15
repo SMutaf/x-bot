@@ -166,13 +166,13 @@ func (ec *EventClusterer) findSimilarEvent(tokens []string) (event *Event, redis
 	return nil, exactKey
 }
 
-func (ec *EventClusterer) AddEvent(item models.NewsItem) (boost int, sourceCount int, clusterKey string) {
-	tokens := normalizeTitle(item.Title)
+func (ec *EventClusterer) AddEvent(news models.RawNewsItem) (boost int, sourceCount int, clusterKey string) {
+	tokens := normalizeTitle(news.Title)
 	if len(tokens) == 0 {
 		return 0, 1, ""
 	}
 
-	ttl := ec.ttl[item.Category]
+	ttl := ec.ttl[news.Category]
 	if ttl == 0 {
 		ttl = 2 * time.Hour
 	}
@@ -182,22 +182,22 @@ func (ec *EventClusterer) AddEvent(item models.NewsItem) (boost int, sourceCount
 	if existingEvent == nil {
 		event := &Event{
 			Key:     redisKey,
-			Sources: map[string]bool{item.Source: true},
+			Sources: map[string]bool{news.Source: true},
 			Count:   1,
 			Created: time.Now(),
 		}
 		data, _ := json.Marshal(event)
 		ec.client.Set(ec.ctx, redisKey, string(data), ttl)
-		fmt.Printf("[CLUSTER] Yeni event (count:1): %s\n", item.Title)
+		fmt.Printf("[CLUSTER] Yeni event (count:1): %s\n", news.Title)
 		return 0, 1, redisKey
 	}
 
-	if existingEvent.Sources[item.Source] {
-		fmt.Printf("[CLUSTER] Aynı kaynak tekrarı, boost yok (%s): %s\n", item.Source, item.Title)
+	if existingEvent.Sources[news.Source] {
+		fmt.Printf("[CLUSTER] Aynı kaynak tekrarı, boost yok (%s): %s\n", news.Source, news.Title)
 		return 0, existingEvent.Count, redisKey
 	}
 
-	existingEvent.Sources[item.Source] = true
+	existingEvent.Sources[news.Source] = true
 	existingEvent.Count++
 
 	data, _ := json.Marshal(existingEvent)
@@ -205,7 +205,7 @@ func (ec *EventClusterer) AddEvent(item models.NewsItem) (boost int, sourceCount
 
 	boost = calculateBoost(existingEvent.Count)
 	fmt.Printf("[CLUSTER] Event güncellendi (count:%d, boost:+%d, kaynaklar:%v): %s\n",
-		existingEvent.Count, boost, sourceKeys(existingEvent.Sources), item.Title)
+		existingEvent.Count, boost, sourceKeys(existingEvent.Sources), news.Title)
 
 	return boost, existingEvent.Count, redisKey
 }

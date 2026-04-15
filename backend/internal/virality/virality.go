@@ -74,34 +74,34 @@ func recencyScore(publishedAt time.Time) float64 {
 	}
 }
 
-func (v *ViralityScorer) burstScore(item models.NewsItem) float64 {
+func (v *ViralityScorer) burstScore(env models.NewsEnvelope) float64 {
 	if v.redisClient == nil {
 		return 0
 	}
 
-	if item.Category != models.CategoryBreaking && item.Category != models.CategoryGeneral {
+	if env.News.Category != models.CategoryBreaking && env.News.Category != models.CategoryGeneral {
 		return 0
 	}
 
-	if item.ClusterCount < 2 {
+	if env.Cluster.ClusterCount < 2 {
 		return 0
 	}
 
 	now := time.Now()
 	window := now.Unix() / 300
-	currentKey := fmt.Sprintf("burst:%s:%d", item.Category, window)
+	currentKey := fmt.Sprintf("burst:%s:%d", env.News.Category, window)
 
 	currentCount, err := v.redisClient.Incr(v.ctx, currentKey).Result()
 	if err != nil {
 		return 0
 	}
-	v.redisClient.Expire(v.ctx, currentKey, 45*time.Minute)
+	_ = v.redisClient.Expire(v.ctx, currentKey, 45*time.Minute).Err()
 
 	var total float64
 	var samples float64
 
 	for i := int64(1); i <= 6; i++ {
-		prevKey := fmt.Sprintf("burst:%s:%d", item.Category, window-i)
+		prevKey := fmt.Sprintf("burst:%s:%d", env.News.Category, window-i)
 		val, err := v.redisClient.Get(v.ctx, prevKey).Result()
 		if err != nil {
 			continue
@@ -116,7 +116,7 @@ func (v *ViralityScorer) burstScore(item models.NewsItem) float64 {
 		samples++
 	}
 
-	var baseline float64 = 1
+	baseline := 1.0
 	if samples > 0 {
 		baseline = total / samples
 		if baseline < 1 {
@@ -180,17 +180,17 @@ func hasLargeNumber(text string) bool {
 	return false
 }
 
-func (v *ViralityScorer) CalculateScore(item models.NewsItem) int {
-	text := strings.ToLower(item.Title + " " + item.Description)
+func (v *ViralityScorer) CalculateScore(env models.NewsEnvelope) int {
+	text := strings.ToLower(env.News.Title + " " + env.News.Description)
 
-	cScore := clusterScore(item.ClusterCount)
-	rScore := recencyScore(item.PublishedAt)
-	bScore := v.burstScore(item)
+	cScore := clusterScore(env.Cluster.ClusterCount)
+	rScore := recencyScore(env.News.PublishedAt)
+	bScore := v.burstScore(env)
 	kScore := keywordScore(text)
 
 	var raw float64
 
-	switch item.Category {
+	switch env.News.Category {
 	case models.CategoryBreaking:
 		raw = (cScore * 0.58) + (rScore * 0.24) + (bScore * 0.12) + (kScore * 0.06)
 	case models.CategoryGeneral:
@@ -213,7 +213,7 @@ func (v *ViralityScorer) CalculateScore(item models.NewsItem) int {
 
 	fmt.Printf(
 		"[VIRALITY DETAIL] cluster:%.0f recency:%.0f burst:%.0f keyword:%.0f => %d | %s\n",
-		cScore, rScore, bScore, kScore, final, item.Title,
+		cScore, rScore, bScore, kScore, final, env.News.Title,
 	)
 
 	return final

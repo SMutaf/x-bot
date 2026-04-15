@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/SMutaf/twitter-bot/backend/internal/models"
 )
 
-type MessageRequest struct {
+type EditorialRequest struct {
 	Title       string     `json:"title"`
 	Content     string     `json:"content"`
 	URL         string     `json:"url"`
@@ -19,7 +21,7 @@ type MessageRequest struct {
 	PublishedAt *time.Time `json:"published_at,omitempty"`
 }
 
-type MessageResponse struct {
+type EditorialResponse struct {
 	Decision     string `json:"decision"`
 	RejectReason string `json:"reject_reason,omitempty"`
 
@@ -46,47 +48,64 @@ func NewClient(apiURL string) *Client {
 	}
 }
 
-func (c *Client) GenerateTelegramPost(title, content, url, source, category string, publishedAt time.Time) (*MessageResponse, error) {
+func (c *Client) AnalyzeEditorial(env models.NewsEnvelope) (*models.EditorialDecision, *EditorialResponse, error) {
 	var pubAt *time.Time
-	if !publishedAt.IsZero() {
-		pubAt = &publishedAt
+	if !env.News.PublishedAt.IsZero() {
+		pubAt = &env.News.PublishedAt
 	}
 
-	reqBody := MessageRequest{
-		Title:       title,
-		Content:     content,
-		URL:         url,
-		Source:      source,
-		Category:    category,
+	reqBody := EditorialRequest{
+		Title:       env.News.Title,
+		Content:     env.News.Description,
+		URL:         env.News.Link,
+		Source:      env.News.Source,
+		Category:    string(env.News.Category),
 		PublishedAt: pubAt,
 	}
 
 	jsonValue, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("istek JSON'a çevrilemedi: %v", err)
+		return nil, nil, fmt.Errorf("istek JSON'a çevrilemedi: %v", err)
 	}
 
 	resp, err := c.HTTPClient.Post(c.BaseURL+"/generate-message", "application/json", bytes.NewBuffer(jsonValue))
 	if err != nil {
-		return nil, fmt.Errorf("AI servisine ulaşılamadı: %v", err)
+		return nil, nil, fmt.Errorf("AI servisine ulaşılamadı: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		if err != nil {
-			return nil, fmt.Errorf("AI servisi hata döndü [%d]: (body okunamadı: %v)", resp.StatusCode, err)
+			return nil, nil, fmt.Errorf("AI servisi hata döndü [%d]: (body okunamadı: %v)", resp.StatusCode, err)
 		}
-		return nil, fmt.Errorf("AI servisi hata döndü [%d]: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		return nil, nil, fmt.Errorf("AI servisi hata döndü [%d]: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
 	}
-	var out MessageResponse
+
+	var out EditorialResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("cevap okunamadı: %v", err)
+		return nil, nil, fmt.Errorf("cevap okunamadı: %v", err)
 	}
 
 	if out.Decision == "" {
-		return nil, fmt.Errorf("AI cevabında decision alanı yok")
+		return nil, nil, fmt.Errorf("AI cevabında decision alanı yok")
 	}
 
-	return &out, nil
+	decision := &models.EditorialDecision{
+		ID:              env.News.ID,
+		NewsID:          env.News.ID,
+		Decision:        models.EditorialDecisionType(out.Decision),
+		RejectReason:    out.RejectReason,
+		NewsType:        out.NewsType,
+		Sentiment:       out.Sentiment,
+		Hook:            out.Hook,
+		Summary:         out.Summary,
+		Importance:      out.Importance,
+		SourceLine:      out.SourceLine,
+		ApprovalStatus:  models.ApprovalPending,
+		ApprovalChannel: "telegram",
+		CreatedAt:       time.Now(),
+	}
+
+	return decision, &out, nil
 }

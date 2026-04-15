@@ -53,8 +53,8 @@ func main() {
 		monitor,
 	)
 
-	breakingChannel := make(chan models.NewsItem, 100)
-	normalChannel := make(chan models.NewsItem, 200)
+	breakingChannel := make(chan models.NewsEnvelope, 100)
+	normalChannel := make(chan models.NewsEnvelope, 200)
 
 	newsFilter := filter.NewNewsFilter()
 	sc := scraper.NewRSSScraper(
@@ -105,9 +105,8 @@ func main() {
 					fmt.Println("[DENGE] Normal kanala geçiliyor...")
 					_ = limiter.Wait(context.Background())
 					middleware.RecoveryWrapper("Normal News Worker", func() {
-						// DÜZELTME: hata artık loglanıyor
 						if err := processor.Process(item); err != nil {
-							fmt.Printf("[PROCESS HATA] Normal News Worker: %v (haber: %s)\n", err, item.Title)
+							fmt.Printf("[PROCESS HATA] Normal News Worker: %v (haber: %s)\n", err, item.News.Title)
 						}
 					})
 					breakingStreak = 0
@@ -123,7 +122,7 @@ func main() {
 				_ = limiter.Wait(context.Background())
 				middleware.RecoveryWrapper("Breaking News Worker", func() {
 					if err := processor.Process(item); err != nil {
-						fmt.Printf("[PROCESS HATA] Breaking News Worker: %v (haber: %s)\n", err, item.Title)
+						fmt.Printf("[PROCESS HATA] Breaking News Worker: %v (haber: %s)\n", err, item.News.Title)
 					}
 				})
 				breakingStreak++
@@ -133,7 +132,7 @@ func main() {
 				_ = limiter.Wait(context.Background())
 				middleware.RecoveryWrapper("Normal News Worker", func() {
 					if err := processor.Process(item); err != nil {
-						fmt.Printf("[PROCESS HATA] Normal News Worker: %v (haber: %s)\n", err, item.Title)
+						fmt.Printf("[PROCESS HATA] Normal News Worker: %v (haber: %s)\n", err, item.News.Title)
 					}
 				})
 				breakingStreak = 0

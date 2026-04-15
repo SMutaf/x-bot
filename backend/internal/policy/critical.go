@@ -6,10 +6,9 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
 )
 
-func IsCriticalEvent(item models.NewsItem) bool {
-	text := strings.ToLower(item.Title + " " + item.Description)
+func IsCriticalEvent(env models.NewsEnvelope, _ CategoryPolicy) bool {
+	text := strings.ToLower(env.News.Title + " " + env.News.Description)
 
-	// Güçlü event varsa speculative/diplomatic negatif pattern’lere rağmen geçebilir
 	strongEvent := hasStrongAction(text) && (hasSecurityEvent(text) || hasEnergyShockEvent(text) || hasMacroEvent(text))
 
 	if !strongEvent {
@@ -18,22 +17,18 @@ func IsCriticalEvent(item models.NewsItem) bool {
 		}
 	}
 
-	// Makro olaylar tek başına kritik sayılabilir
 	if hasMacroEvent(text) {
 		return true
 	}
 
-	// Resmi devlet aksiyonları kritik olabilir
 	if hasOfficialAction(text) && (hasStrongAction(text) || hasNumberSignal(text) || hasStrongSecondarySignal(text)) {
 		return true
 	}
 
-	// Güvenlik / savaş olayları
 	if hasSecurityEvent(text) && (hasStrongAction(text) || hasNumberSignal(text) || hasStrongSecondarySignal(text)) {
 		return true
 	}
 
-	// Enerji arzı / petrol / LNG şokları
 	if hasEnergyShockEvent(text) && (hasStrongAction(text) || hasNumberSignal(text) || hasStrongSecondarySignal(text)) {
 		return true
 	}

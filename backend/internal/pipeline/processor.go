@@ -40,112 +40,109 @@ func NewProcessor(
 	}
 }
 
-func (p *Processor) Process(item models.NewsItem) error {
-	catPolicy := policy.Get(item.Category)
+func (p *Processor) Process(env models.NewsEnvelope) error {
+	catPolicy := policy.Get(env.News.Category)
 
-	if item.ClusterCount < catPolicy.MinClusterCount {
+	if env.Cluster.ClusterCount < catPolicy.MinClusterCount {
 		fmt.Printf("[HARD FILTER] %s için yetersiz kaynak (%d < %d): %s\n",
-			item.Category, item.ClusterCount, catPolicy.MinClusterCount, item.Title)
-		p.recordRejected(item, "process-min-cluster")
+			env.News.Category, env.Cluster.ClusterCount, catPolicy.MinClusterCount, env.News.Title)
+		p.recordRejected(env, "process-min-cluster")
 		return nil
 	}
 
-	if item.ClusterKey != "" && p.cluster.WasSentRecently(item.ClusterKey) {
-		fmt.Printf("[EVENT DEDUPE] Aynı event yakın zamanda gönderilmiş, atlandı: %s\n", item.Title)
-		p.recordRejected(item, "event-dedupe")
+	if env.Cluster.ClusterKey != "" && p.cluster.WasSentRecently(env.Cluster.ClusterKey) {
+		fmt.Printf("[EVENT DEDUPE] Aynı event yakın zamanda gönderilmiş, atlandı: %s\n", env.News.Title)
+		p.recordRejected(env, "event-dedupe")
 		return nil
 	}
 
-	score := p.scorer.Calculate(item)
+	score := p.scorer.Calculate(env)
+	env.Score = score
+	env.Stage = models.StageScored
+
 	fmt.Printf("[%s] Virality: %d (%s) | ClusterCount: %d | %s\n",
-		item.Category, score.Final, p.scorer.GetViralityLevel(score.Final), item.ClusterCount, item.Title)
+		env.News.Category, score.Final, p.scorer.GetViralityLevel(score.Final), env.Cluster.ClusterCount, env.News.Title)
 
 	if score.Final < catPolicy.MinVirality {
-		if !(policy.IsCriticalEvent(item) && policy.IsAcceptableCriticalAge(item, catPolicy)) {
+		if !(policy.IsCriticalEvent(env, catPolicy) && policy.IsAcceptableCriticalAge(env, catPolicy)) {
 			fmt.Printf("[VIRALITY FILTER] Elendi (score:%d < min:%d): %s\n",
-				score.Final, catPolicy.MinVirality, item.Title)
-			p.recordRejected(item, "virality-filter")
+				score.Final, catPolicy.MinVirality, env.News.Title)
+			p.recordRejected(env, "virality-filter")
 			return nil
 		}
-		fmt.Printf("[CRITICAL OVERRIDE] Düşük skora rağmen geçirildi: %s\n", item.Title)
+		fmt.Printf("[CRITICAL OVERRIDE] Düşük skora rağmen geçirildi: %s\n", env.News.Title)
 	}
 
-	if item.Category == models.CategoryTech && !p.isAllowedTechHour() {
-		fmt.Printf("[SAAT FİLTRE] Gönderilmiyor: %s\n", item.Title)
-		p.recordRejected(item, "tech-time-filter")
+	if env.News.Category == models.CategoryTech && !p.isAllowedTechHour() {
+		fmt.Printf("[SAAT FİLTRE] Gönderilmiyor: %s\n", env.News.Title)
+		p.recordRejected(env, "tech-time-filter")
 		return nil
 	}
 
-	publishedTime := p.buildPublishedTime(item)
-
-	response, err := p.ai.GenerateTelegramPost(
-		item.Title,
-		item.Description,
-		item.Link,
-		item.Source,
-		string(item.Category),
-		item.PublishedAt,
-	)
+	publishedTime := p.buildPublishedTime(env)
+	decision, response, err := p.ai.AnalyzeEditorial(env)
 	if err != nil {
-		fmt.Printf("AI Hatası (%s): %v\n", item.Title, err)
-		p.recordRejected(item, "ai-error")
+		fmt.Printf("AI Hatası (%s): %v\n", env.News.Title, err)
+		p.recordRejected(env, "ai-error")
 		return err
 	}
 
-	if response.Decision == "reject" {
-		reason := response.RejectReason
+	env.Stage = models.StageLLMAnalyzed
+
+	if decision.Decision == models.DecisionReject {
+		reason := decision.RejectReason
 		if reason == "" {
 			reason = "llm-editorial-reject"
 		}
 
-		fmt.Printf("LLM editoryal olarak reddetti (%s): %s\n", reason, item.Title)
-		p.recordRejected(item, "llm-"+reason)
+		fmt.Printf("LLM editoryal olarak reddetti (%s): %s\n", reason, env.News.Title)
+		p.recordRejected(env, "llm-"+reason)
 		return nil
 	}
 
-	if response.Decision != "publish" {
-		fmt.Printf("AI geçersiz decision döndü (%s): %s\n", response.Decision, item.Title)
-		p.recordRejected(item, "ai-invalid-decision")
+	if decision.Decision != models.DecisionPublish {
+		fmt.Printf("AI geçersiz decision döndü (%s): %s\n", decision.Decision, env.News.Title)
+		p.recordRejected(env, "ai-invalid-decision")
 		return nil
 	}
 
 	if response.Message == "" {
-		fmt.Printf("AI boş cevap döndü: %s\n", item.Title)
-		p.recordRejected(item, "ai-empty-message")
+		fmt.Printf("AI boş cevap döndü: %s\n", env.News.Title)
+		p.recordRejected(env, "ai-empty-message")
 		return nil
 	}
 
 	fmt.Printf("AI cevap aldı - Message: %s...\n", response.Message[:min(60, len(response.Message))])
 
-	if err := p.telegram.RequestApproval(response.Message, string(item.Category), publishedTime); err != nil {
+	if err := p.telegram.RequestApproval(response.Message, string(env.News.Category), publishedTime); err != nil {
 		fmt.Printf("Telegram Hatası: %v\n", err)
-		p.recordRejected(item, "telegram-error")
+		p.recordRejected(env, "telegram-error")
 		return err
 	}
 
 	p.monitor.RecordPublished(monitoring.PublishedNewsEvent{
 		Time:         time.Now(),
-		Title:        item.Title,
-		Category:     string(item.Category),
-		Source:       item.Source,
-		Link:         item.Link,
+		Title:        env.News.Title,
+		Category:     string(env.News.Category),
+		Source:       env.News.Source,
+		Link:         env.News.Link,
 		Virality:     score.Final,
-		ClusterCount: item.ClusterCount,
+		ClusterCount: env.Cluster.ClusterCount,
 	})
 
-	if item.ClusterKey != "" {
-		p.cluster.MarkSent(item.ClusterKey, catPolicy.DedupeCooldown)
+	if env.Cluster.ClusterKey != "" {
+		p.cluster.MarkSent(env.Cluster.ClusterKey, catPolicy.DedupeCooldown)
 	}
 
 	return nil
 }
 
-func (p *Processor) recordRejected(item models.NewsItem, reason string) {
+func (p *Processor) recordRejected(env models.NewsEnvelope, reason string) {
 	p.monitor.RecordRejected(monitoring.RejectedNewsEvent{
 		Time:     time.Now(),
-		Title:    item.Title,
-		Category: string(item.Category),
-		Source:   item.Source,
+		Title:    env.News.Title,
+		Category: string(env.News.Category),
+		Source:   env.News.Source,
 		Reason:   reason,
 	})
 }
@@ -155,11 +152,11 @@ func (p *Processor) isAllowedTechHour() bool {
 	return (hour >= 8 && hour < 11) || (hour >= 13 && hour < 15) || (hour >= 18 && hour <= 22)
 }
 
-func (p *Processor) buildPublishedTime(item models.NewsItem) string {
-	if item.PublishedAt.IsZero() {
+func (p *Processor) buildPublishedTime(env models.NewsEnvelope) string {
+	if env.News.PublishedAt.IsZero() {
 		return ""
 	}
-	diff := time.Since(item.PublishedAt)
+	diff := time.Since(env.News.PublishedAt)
 	switch {
 	case diff < 5*time.Minute:
 		return "🔴 ŞU AN"
@@ -168,7 +165,7 @@ func (p *Processor) buildPublishedTime(item models.NewsItem) string {
 	case diff < 2*time.Hour:
 		return fmt.Sprintf("%d saat önce", int(diff.Hours()))
 	default:
-		return item.PublishedAt.In(p.istLoc).Format("15:04")
+		return env.News.PublishedAt.In(p.istLoc).Format("15:04")
 	}
 }
 

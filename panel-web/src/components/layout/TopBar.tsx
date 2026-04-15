@@ -13,7 +13,7 @@ export default function TopBar() {
           disabled
         />
       </div>
-
+    
       <div className="topbar__right">
         <button className="ghost-button" type="button">
           Kullanıcı

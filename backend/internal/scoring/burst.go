@@ -22,22 +22,22 @@ func NewBurstProvider(redisClient *redis.Client) *BurstProvider {
 	}
 }
 
-func (b *BurstProvider) Score(item models.NewsItem) float64 {
+func (b *BurstProvider) Score(env models.NewsEnvelope) float64 {
 	if b.redisClient == nil {
 		return 0
 	}
 
-	if item.Category != models.CategoryBreaking && item.Category != models.CategoryGeneral {
+	if env.News.Category != models.CategoryBreaking && env.News.Category != models.CategoryGeneral {
 		return 0
 	}
 
-	if item.ClusterCount < 2 {
+	if env.Cluster.ClusterCount < 2 {
 		return 0
 	}
 
 	now := time.Now()
 	window := now.Unix() / 300
-	currentKey := fmt.Sprintf("burst:%s:%d", item.Category, window)
+	currentKey := fmt.Sprintf("burst:%s:%d", env.News.Category, window)
 
 	currentCount, err := b.redisClient.Incr(b.ctx, currentKey).Result()
 	if err != nil {
@@ -49,7 +49,7 @@ func (b *BurstProvider) Score(item models.NewsItem) float64 {
 	var samples float64
 
 	for i := int64(1); i <= 6; i++ {
-		prevKey := fmt.Sprintf("burst:%s:%d", item.Category, window-i)
+		prevKey := fmt.Sprintf("burst:%s:%d", env.News.Category, window-i)
 		val, err := b.redisClient.Get(b.ctx, prevKey).Result()
 		if err != nil {
 			continue
