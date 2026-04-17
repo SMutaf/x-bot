@@ -80,8 +80,6 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 		return nil
 	}
 
-	publishedTime := p.buildPublishedTime(env)
-
 	req := models.EditorialAnalysisRequest{
 		Title:        env.News.Title,
 		Description:  env.News.Description,
@@ -125,10 +123,12 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 
 	message := p.buildTelegramMessage(env, res)
 	if strings.TrimSpace(message) == "" {
-		fmt.Printf("AI boş cevap döndü: %s\n", env.News.Title)
+		fmt.Printf("AI boş veya geçersiz içerik döndü: %s\n", env.News.Title)
 		p.recordRejected(env, "ai-empty-message")
 		return nil
 	}
+
+	publishedTime := p.buildPublishedTime(env)
 
 	fmt.Printf("AI cevap aldı - Message: %s...\n", message[:min(60, len(message))])
 

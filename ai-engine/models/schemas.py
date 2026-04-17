@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class EditorialAnalysisRequest(BaseModel):
@@ -8,18 +8,34 @@ class EditorialAnalysisRequest(BaseModel):
     description: str
     category: str
     source: str
-    published_at: datetime
+    published_at: Optional[datetime] = None
 
     cluster_count: int
     virality: int
 
 
 class EditorialAnalysisResponse(BaseModel):
-    decision: Literal["PUBLISH", "REJECT"]
-    reject_reason: Optional[str] = ""
+    decision: Literal["PUBLISH", "REJECT"] = Field(
+        description="Editoryal karar: PUBLISH veya REJECT"
+    )
+    reject_reason: Optional[str] = Field(
+        default="",
+        description="REJECT ise kısa sebep"
+    )
 
-    summary: str
-    importance: str
-    sentiment: str
-
-    hook: str
+    hook: str = Field(
+        default="",
+        description="Kısa dikkat çekici ilk satır"
+    )
+    summary: str = Field(
+        default="",
+        description="Haberi 1-2 kısa cümlede özetleyen metin"
+    )
+    importance: str = Field(
+        default="",
+        description="Neden önemli olduğunu anlatan kısa cümle"
+    )
+    sentiment: Literal["positive", "negative", "neutral"] = Field(
+        default="neutral",
+        description="Haber tonu"
+    )

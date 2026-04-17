@@ -3,12 +3,15 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
 from models.schemas import EditorialAnalysisRequest, EditorialAnalysisResponse
+from services.llm import GeminiService
 from core.exceptions import global_exception_handler, validation_exception_handler
 
 app = FastAPI(title="Editorial AI Engine")
 
 app.add_exception_handler(Exception, global_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
+
+ai_service = GeminiService()
 
 
 @app.get("/")
@@ -17,20 +20,26 @@ def read_root():
 
 
 @app.post("/analyze", response_model=EditorialAnalysisResponse)
-def analyze(req: EditorialAnalysisRequest):
+async def analyze(req: EditorialAnalysisRequest):
+    print(f"[AI] Analyzing: {req.title}...")
 
-    print(f"[AI] Analyzing: {req.title}")
+    result = ai_service.analyze_editorial(
+        title=req.title,
+        content=req.description,
+        source=req.source,
+        category=req.category,
+        published_at=req.published_at,
+        cluster_count=req.cluster_count,
+        virality=req.virality,
+    )
 
-    # ŞİMDİLİK MOCK
     return EditorialAnalysisResponse(
-        decision="PUBLISH",
-        reject_reason="",
-
-        summary="Test summary",
-        importance="MEDIUM",
-        sentiment="NEUTRAL",
-
-        hook="Test hook"
+        decision=result.get("decision", "REJECT"),
+        reject_reason=result.get("reject_reason", ""),
+        hook=result.get("hook", ""),
+        summary=result.get("summary", ""),
+        importance=result.get("importance", ""),
+        sentiment=result.get("sentiment", "neutral"),
     )
 
 
