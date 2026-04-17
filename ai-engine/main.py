@@ -2,46 +2,35 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
-from models.schemas import TweetRequest, TweetResponse
-from services.llm import GeminiService
+from models.schemas import EditorialAnalysisRequest, EditorialAnalysisResponse
 from core.exceptions import global_exception_handler, validation_exception_handler
 
-app = FastAPI(title="Telegram News Bot AI Engine")
+app = FastAPI(title="Editorial AI Engine")
 
 app.add_exception_handler(Exception, global_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
-ai_service = GeminiService()
-
 
 @app.get("/")
 def read_root():
-    return {"status": "Telegram AI Engine is Online", "model": "gemma-3-12b-it"}
+    return {"status": "AI Engine Running", "mode": "editorial"}
 
 
-@app.post("/generate-message", response_model=TweetResponse)
-async def generate_tweet_endpoint(request: TweetRequest):
-    print(f"Telegram içerik üretimi: {request.title}...")
+@app.post("/analyze", response_model=EditorialAnalysisResponse)
+def analyze(req: EditorialAnalysisRequest):
 
-    result = ai_service.generate_telegram_post(
-        title=request.title,
-        content=request.content,
-        url=request.url,
-        source=request.source,
-        category=request.category,
-        published_at=request.published_at,
-    )
+    print(f"[AI] Analyzing: {req.title}")
 
-    return TweetResponse(
-        decision=result.get("decision", "reject"),
-        reject_reason=result.get("reject_reason", ""),
-        message=result.get("message", ""),
-        hook=result.get("hook", ""),
-        summary=result.get("summary", ""),
-        importance=result.get("importance", ""),
-        source_line=result.get("source_line", ""),
-        sentiment=result.get("sentiment", ""),
-        news_type=result.get("news_type", ""),
+    # ŞİMDİLİK MOCK
+    return EditorialAnalysisResponse(
+        decision="PUBLISH",
+        reject_reason="",
+
+        summary="Test summary",
+        importance="MEDIUM",
+        sentiment="NEUTRAL",
+
+        hook="Test hook"
     )
 
 

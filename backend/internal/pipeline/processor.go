@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/SMutaf/twitter-bot/backend/internal/ai"
@@ -80,7 +81,18 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 	}
 
 	publishedTime := p.buildPublishedTime(env)
-	decision, response, err := p.ai.AnalyzeEditorial(env)
+
+	req := models.EditorialAnalysisRequest{
+		Title:        env.News.Title,
+		Description:  env.News.Description,
+		Category:     string(env.News.Category),
+		Source:       env.News.Source,
+		PublishedAt:  env.News.PublishedAt,
+		ClusterCount: env.Cluster.ClusterCount,
+		Virality:     env.Score.Final,
+	}
+
+	res, err := p.ai.Analyze(req)
 	if err != nil {
 		fmt.Printf("AI Hatası (%s): %v\n", env.News.Title, err)
 		p.recordRejected(env, "ai-error")
@@ -89,32 +101,38 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 
 	env.Stage = models.StageLLMAnalyzed
 
-	if decision.Decision == models.DecisionReject {
-		reason := decision.RejectReason
-		if reason == "" {
-			reason = "llm-editorial-reject"
+	fmt.Printf("[AI] Decision: %s | Reason: %s | %s\n",
+		res.Decision, res.RejectReason, env.News.Title)
+
+	decision := strings.ToUpper(strings.TrimSpace(res.Decision))
+	rejectReason := strings.TrimSpace(res.RejectReason)
+
+	if decision == "REJECT" {
+		if rejectReason == "" {
+			rejectReason = "llm-editorial-reject"
 		}
 
-		fmt.Printf("LLM editoryal olarak reddetti (%s): %s\n", reason, env.News.Title)
-		p.recordRejected(env, "llm-"+reason)
+		fmt.Printf("LLM editoryal olarak reddetti (%s): %s\n", rejectReason, env.News.Title)
+		p.recordRejected(env, "llm-"+rejectReason)
 		return nil
 	}
 
-	if decision.Decision != models.DecisionPublish {
-		fmt.Printf("AI geçersiz decision döndü (%s): %s\n", decision.Decision, env.News.Title)
+	if decision != "PUBLISH" {
+		fmt.Printf("AI geçersiz decision döndü (%s): %s\n", res.Decision, env.News.Title)
 		p.recordRejected(env, "ai-invalid-decision")
 		return nil
 	}
 
-	if response.Message == "" {
+	message := p.buildTelegramMessage(env, res)
+	if strings.TrimSpace(message) == "" {
 		fmt.Printf("AI boş cevap döndü: %s\n", env.News.Title)
 		p.recordRejected(env, "ai-empty-message")
 		return nil
 	}
 
-	fmt.Printf("AI cevap aldı - Message: %s...\n", response.Message[:min(60, len(response.Message))])
+	fmt.Printf("AI cevap aldı - Message: %s...\n", message[:min(60, len(message))])
 
-	if err := p.telegram.RequestApproval(response.Message, string(env.News.Category), publishedTime); err != nil {
+	if err := p.telegram.RequestApproval(message, string(env.News.Category), publishedTime); err != nil {
 		fmt.Printf("Telegram Hatası: %v\n", err)
 		p.recordRejected(env, "telegram-error")
 		return err
@@ -135,6 +153,34 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 	}
 
 	return nil
+}
+
+func (p *Processor) buildTelegramMessage(env models.NewsEnvelope, res *models.EditorialAnalysisResponse) string {
+	parts := make([]string, 0, 5)
+
+	hook := strings.TrimSpace(res.Hook)
+	summary := strings.TrimSpace(res.Summary)
+	importance := strings.TrimSpace(res.Importance)
+	source := strings.TrimSpace(env.News.Source)
+	link := strings.TrimSpace(env.News.Link)
+
+	if hook != "" {
+		parts = append(parts, fmt.Sprintf("**%s**", hook))
+	}
+	if summary != "" {
+		parts = append(parts, summary)
+	}
+	if importance != "" {
+		parts = append(parts, fmt.Sprintf("_Neden önemli:_ %s", importance))
+	}
+	if source != "" {
+		parts = append(parts, fmt.Sprintf("Kaynak: %s", source))
+	}
+	if link != "" {
+		parts = append(parts, link)
+	}
+
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
 
 func (p *Processor) recordRejected(env models.NewsEnvelope, reason string) {
