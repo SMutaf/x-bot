@@ -102,6 +102,22 @@ func (m *Manager) GetHealthPath() string {
 	return m.healthPath
 }
 
+func (m *Manager) PublishedPath() string {
+	return m.publishedPath
+}
+
+func (m *Manager) RejectedPath() string {
+	return m.rejectedPath
+}
+
+func (m *Manager) HealthPath() string {
+	return m.healthPath
+}
+
+func (m *Manager) GetSourceHealth() string {
+	return m.GetSourceHealth()
+}
+
 func (m *Manager) BuildSummary(snapshot []sourcehealth.Status) Summary {
 	healthy := 0
 	disabled := 0

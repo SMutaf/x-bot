@@ -145,6 +145,7 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 	p.monitor.RecordPublished(monitoring.PublishedNewsEvent{
 		Time:         time.Now(),
 		Title:        env.News.Title,
+		Description:  env.News.Description,
 		Category:     string(env.News.Category),
 		Source:       env.News.Source,
 		Link:         env.News.Link,

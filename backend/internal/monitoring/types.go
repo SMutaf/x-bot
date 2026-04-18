@@ -5,6 +5,7 @@ import "time"
 type PublishedNewsEvent struct {
 	Time         time.Time `json:"time"`
 	Title        string    `json:"title"`
+	Description  string    `json:"description"`
 	Category     string    `json:"category"`
 	Source       string    `json:"source"`
 	Link         string    `json:"link"`

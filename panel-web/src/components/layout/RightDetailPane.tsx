@@ -1,28 +1,72 @@
-export default function RightDetailPane() {
+import type { FeedItem } from "../../features/feed/types";
+
+type RightDetailPaneProps = {
+  selectedItem: FeedItem | null;
+};
+
+export default function RightDetailPane(props: RightDetailPaneProps) {
+  const { selectedItem } = props;
+
+  if (!selectedItem) {
+    return (
+      <aside className="right-detail-pane">
+        <div className="panel-title">Detay</div>
+
+        <div className="detail-card">
+          <h3 className="detail-card__title">Seçili Haber</h3>
+          <p className="detail-card__text">
+            Stream listesinden bir karta tıklanınca detay burada açılacak.
+          </p>
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="right-detail-pane">
       <div className="panel-title">Detay</div>
 
       <div className="detail-card">
         <h3 className="detail-card__title">Seçili Haber</h3>
-        <p className="detail-card__text">
-          Stream listesinde bir
-          karta tıklanınca detay burada açılacak.
+        <p className="detail-card__text detail-card__label">Başlık</p>
+        <p className="detail-card__value">{selectedItem.title}</p>
+
+        <p className="detail-card__text detail-card__label">Kaynak</p>
+        <p className="detail-card__value">{selectedItem.source}</p>
+
+        <p className="detail-card__text detail-card__label">Kategori</p>
+        <p className="detail-card__value">{selectedItem.category}</p>
+
+        <p className="detail-card__text detail-card__label">Zaman</p>
+        <p className="detail-card__value">
+          {selectedItem.time ? new Date(selectedItem.time).toLocaleString("tr-TR") : "-"}
         </p>
       </div>
 
       <div className="detail-card">
         <h3 className="detail-card__title">Cluster Bilgisi</h3>
-        <p className="detail-card__text">
-          Aynı olayın kaç farklı kaynaktan geldiği gösterilecek.
-        </p>
+        <p className="detail-card__text detail-card__label">Cluster Count</p>
+        <p className="detail-card__value">{selectedItem.clusterCount ?? "-"}</p>
+
+        <p className="detail-card__text detail-card__label">Virality</p>
+        <p className="detail-card__value">{selectedItem.virality ?? "-"}</p>
       </div>
 
       <div className="detail-card">
         <h3 className="detail-card__title">Output Preview</h3>
-        <p className="detail-card__text">
-          Son ürün metni burada yer alacak.
-        </p>
+        <a
+          className="feed-card__link"
+          href={selectedItem.link}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Orijinal haberi aç
+        </a>
+      </div>
+
+      <div className="detail-card">
+         <h3 className="detail-card__title">Detay</h3>
+         <p>{selectedItem.description}</p>
       </div>
     </aside>
   );

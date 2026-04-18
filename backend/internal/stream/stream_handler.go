@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
 type PublishedItem struct {
 	Time         string `json:"time"`
 	Title        string `json:"title"`
+	Description  string `json:"description"`
 	Category     string `json:"category"`
 	Source       string `json:"source"`
 	Link         string `json:"link"`
@@ -20,7 +22,6 @@ type PublishedItem struct {
 }
 
 func StreamHandler(w http.ResponseWriter, r *http.Request) {
-	// SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -31,52 +32,91 @@ func StreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	viewID := strings.TrimSpace(r.URL.Query().Get("view"))
 	filePath := "data/published.jsonl"
 
+	sendEvent(w, flusher, "connected", map[string]any{
+		"status": "ok",
+		"view":   viewID,
+		"time":   time.Now().Format(time.RFC3339),
+	})
+
 	var lastLineCount int
+	lastHeartbeat := time.Now()
 
 	for {
 		select {
 		case <-r.Context().Done():
 			fmt.Println("Client disconnected")
 			return
+
 		default:
 			file, err := os.Open(filePath)
-			if err != nil {
-				time.Sleep(2 * time.Second)
-				continue
-			}
+			if err == nil {
+				scanner := bufio.NewScanner(file)
+				currentLine := 0
 
-			scanner := bufio.NewScanner(file)
-			var lines []string
+				for scanner.Scan() {
+					currentLine++
 
-			for scanner.Scan() {
-				lines = append(lines, scanner.Text())
-			}
-			file.Close()
-
-			// yeni satırlar varsa gönder
-			if len(lines) > lastLineCount {
-				newLines := lines[lastLineCount:]
-
-				for _, line := range newLines {
-					var item PublishedItem
-					err := json.Unmarshal([]byte(line), &item)
-					if err != nil {
+					if currentLine <= lastLineCount {
 						continue
 					}
 
-					payload, _ := json.Marshal(item)
+					var item PublishedItem
+					if err := json.Unmarshal(scanner.Bytes(), &item); err != nil {
+						continue
+					}
 
-					fmt.Fprintf(w, "event: news.published\n")
-					fmt.Fprintf(w, "data: %s\n\n", payload)
+					if !matchesView(item, viewID) {
+						continue
+					}
+
+					sendEvent(w, flusher, "news.published", item)
 				}
 
-				lastLineCount = len(lines)
-				flusher.Flush()
+				lastLineCount = currentLine
+				_ = file.Close()
+			}
+
+			if time.Since(lastHeartbeat) >= 15*time.Second {
+				sendEvent(w, flusher, "heartbeat", map[string]any{
+					"time": time.Now().Format(time.RFC3339),
+				})
+				lastHeartbeat = time.Now()
 			}
 
 			time.Sleep(2 * time.Second)
 		}
+	}
+}
+
+func sendEvent(w http.ResponseWriter, flusher http.Flusher, eventName string, payload any) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	fmt.Fprintf(w, "event: %s\n", eventName)
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	flusher.Flush()
+}
+
+func matchesView(item PublishedItem, viewID string) bool {
+	switch viewID {
+	case "turkey-critical":
+		return item.Category == "GENERAL" && item.Virality >= 30
+
+	case "global-high-impact":
+		return (item.Category == "BREAKING" || item.Category == "GENERAL") && item.Virality >= 35
+
+	case "economy-markets":
+		return item.Category == "ECONOMY" || (item.Category == "GENERAL" && item.Virality >= 40)
+
+	case "tech-watch":
+		return item.Category == "TECH"
+
+	default:
+		return true
 	}
 }
