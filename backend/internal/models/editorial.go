@@ -7,7 +7,7 @@ type EditorialDecisionType string
 const (
 	DecisionPublish EditorialDecisionType = "PUBLISH"
 	DecisionReject  EditorialDecisionType = "REJECT"
-	DecisionReview  EditorialDecisionType = "REVİEW"
+	DecisionReview  EditorialDecisionType = "REVIEW"
 )
 
 type ApprovalStatus string

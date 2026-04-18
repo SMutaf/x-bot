@@ -16,6 +16,7 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
 	"github.com/SMutaf/twitter-bot/backend/internal/monitoring"
 	"github.com/SMutaf/twitter-bot/backend/internal/pipeline"
+	"github.com/SMutaf/twitter-bot/backend/internal/render"
 	"github.com/SMutaf/twitter-bot/backend/internal/scoring"
 	"github.com/SMutaf/twitter-bot/backend/internal/scraper"
 	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
@@ -44,6 +45,7 @@ func main() {
 
 	aiClient := ai.NewClient("http://localhost:8000")
 	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
+	telegramRenderer := render.NewTelegramRenderer()
 
 	processor := pipeline.NewProcessor(
 		newsScorer,
@@ -51,6 +53,7 @@ func main() {
 		tgBot,
 		clusterer,
 		monitor,
+		telegramRenderer,
 	)
 
 	breakingChannel := make(chan models.NewsEnvelope, 100)

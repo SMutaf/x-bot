@@ -10,6 +10,7 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
 	"github.com/SMutaf/twitter-bot/backend/internal/monitoring"
 	"github.com/SMutaf/twitter-bot/backend/internal/policy"
+	"github.com/SMutaf/twitter-bot/backend/internal/render"
 	"github.com/SMutaf/twitter-bot/backend/internal/scoring"
 	"github.com/SMutaf/twitter-bot/backend/internal/telegram"
 )
@@ -20,6 +21,7 @@ type Processor struct {
 	telegram *telegram.ApprovalBot
 	cluster  *eventcluster.EventClusterer
 	monitor  *monitoring.Manager
+	renderer *render.TelegramRenderer
 	istLoc   *time.Location
 }
 
@@ -29,6 +31,7 @@ func NewProcessor(
 	tgBot *telegram.ApprovalBot,
 	clusterer *eventcluster.EventClusterer,
 	monitor *monitoring.Manager,
+	renderer *render.TelegramRenderer,
 ) *Processor {
 	loc, _ := time.LoadLocation("Europe/Istanbul")
 	return &Processor{
@@ -37,6 +40,7 @@ func NewProcessor(
 		telegram: tgBot,
 		cluster:  clusterer,
 		monitor:  monitor,
+		renderer: renderer,
 		istLoc:   loc,
 	}
 }
@@ -99,29 +103,29 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 
 	env.Stage = models.StageLLMAnalyzed
 
+	decision := p.mapToEditorialDecision(env, res)
+
 	fmt.Printf("[AI] Decision: %s | Reason: %s | %s\n",
-		res.Decision, res.RejectReason, env.News.Title)
+		decision.Decision, decision.RejectReason, env.News.Title)
 
-	decision := models.EditorialDecisionType(strings.ToUpper(strings.TrimSpace(res.Decision)))
-	rejectReason := strings.TrimSpace(res.RejectReason)
-
-	if decision == models.DecisionReject {
-		if rejectReason == "" {
-			rejectReason = "llm-editorial-reject"
+	if decision.Decision == models.DecisionReject {
+		reason := strings.TrimSpace(decision.RejectReason)
+		if reason == "" {
+			reason = "llm-editorial-reject"
 		}
 
-		fmt.Printf("LLM editoryal olarak reddetti (%s): %s\n", rejectReason, env.News.Title)
-		p.recordRejected(env, "llm-"+rejectReason)
+		fmt.Printf("LLM editoryal olarak reddetti (%s): %s\n", reason, env.News.Title)
+		p.recordRejected(env, "llm-"+reason)
 		return nil
 	}
 
-	if decision != models.DecisionPublish {
-		fmt.Printf("AI geçersiz decision döndü (%s): %s\n", res.Decision, env.News.Title)
+	if decision.Decision != models.DecisionPublish {
+		fmt.Printf("AI geçersiz decision döndü (%s): %s\n", decision.Decision, env.News.Title)
 		p.recordRejected(env, "ai-invalid-decision")
 		return nil
 	}
 
-	message := p.buildTelegramMessage(env, res)
+	message := p.renderer.Render(env, decision)
 	if strings.TrimSpace(message) == "" {
 		fmt.Printf("AI boş veya geçersiz içerik döndü: %s\n", env.News.Title)
 		p.recordRejected(env, "ai-empty-message")
@@ -155,32 +159,30 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 	return nil
 }
 
-func (p *Processor) buildTelegramMessage(env models.NewsEnvelope, res *models.EditorialAnalysisResponse) string {
-	parts := make([]string, 0, 5)
+func (p *Processor) mapToEditorialDecision(env models.NewsEnvelope, res *models.EditorialAnalysisResponse) models.EditorialDecision {
+	decisionType := models.EditorialDecisionType(strings.ToUpper(strings.TrimSpace(res.Decision)))
 
-	hook := strings.TrimSpace(res.Hook)
-	summary := strings.TrimSpace(res.Summary)
-	importance := strings.TrimSpace(res.Importance)
-	source := strings.TrimSpace(env.News.Source)
-	link := strings.TrimSpace(env.News.Link)
-
-	if hook != "" {
-		parts = append(parts, fmt.Sprintf("**%s**", hook))
-	}
-	if summary != "" {
-		parts = append(parts, summary)
-	}
-	if importance != "" {
-		parts = append(parts, fmt.Sprintf("_Neden önemli:_ %s", importance))
-	}
-	if source != "" {
-		parts = append(parts, fmt.Sprintf("Kaynak: %s", source))
-	}
-	if link != "" {
-		parts = append(parts, link)
+	if decisionType != models.DecisionPublish &&
+		decisionType != models.DecisionReject &&
+		decisionType != models.DecisionReview {
+		decisionType = ""
 	}
 
-	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+	return models.EditorialDecision{
+		ID:              env.News.ID,
+		NewsID:          env.News.ID,
+		Decision:        decisionType,
+		RejectReason:    strings.TrimSpace(res.RejectReason),
+		NewsType:        "",
+		Sentiment:       strings.TrimSpace(res.Sentiment),
+		Hook:            strings.TrimSpace(res.Hook),
+		Summary:         strings.TrimSpace(res.Summary),
+		Importance:      strings.TrimSpace(res.Importance),
+		SourceLine:      fmt.Sprintf("Kaynak: %s", env.News.Source),
+		ApprovalStatus:  models.ApprovalPending,
+		ApprovalChannel: "telegram",
+		CreatedAt:       time.Now(),
+	}
 }
 
 func (p *Processor) recordRejected(env models.NewsEnvelope, reason string) {
