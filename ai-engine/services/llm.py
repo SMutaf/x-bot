@@ -260,6 +260,7 @@ YAYINLANABİLECEK HABERLER:
 TÜRKİYE BAĞLANTI KURALLARI:
 Aşağıdaki durumlarda haberin Türkiye ile "dolaylı bağlantısı" olduğunu kabul et ve PUBLISH yönünde değerlendir:
 - ABD, AB veya Çin ekonomik/ticaret kararları → TL kuru, BIST, ihracat/ithalat doğrudan etkilenir
+- Fed veya ECB faiz kararları → gelişen piyasa (EM) sermaye akışı üzerinden Türkiye'yi etkiler
 - Orta Doğu güvenlik gelişmeleri (Suriye, İran, İsrail, Körfez) → enerji fiyatları, turizm, sınır güvenliği
 - NATO veya savunma gelişmeleri → Türkiye NATO üyesidir, her karar doğrudan bağlayıcıdır
 - Körfez / Hürmüz Boğazı / LNG enerji haberleri → Türkiye enerjisinin büyük bölümünü ithal eder
