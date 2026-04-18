@@ -3,19 +3,22 @@ package filter
 import "strings"
 
 func IsEconomyRelevant(text string) bool {
-	text = strings.ToLower(text)
-
-	// Türkiye veya global kritik etki
-	if hasTurkeyImpact(text) || hasGlobalCriticalImpact(text) {
-		return true
-	}
-
-	// sadece genel analiz/yorum → elenecek
-	if isWeakEconomyContent(text) {
+	// Kişisel finans içerikleri kesin reddet
+	if containsAny(text, personalFinanceKeywords) {
 		return false
 	}
+	// Türkiye veya global kritik etki VAR mı?
+	hasTurkey := hasTurkeyImpact(text)
+	hasGlobal := hasGlobalCriticalImpact(text)
 
-	return false
+	if !hasTurkey && !hasGlobal {
+		return false
+	}
+	// Zayıf içerik ama kritik bir kurum söz konusuysa geç
+	if isWeakEconomyContent(text) && !hasTurkey {
+		return false
+	}
+	return true
 }
 
 func hasTurkeyImpact(text string) bool {

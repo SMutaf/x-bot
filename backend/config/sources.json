@@ -1,82 +1,43 @@
 [
-  {
-    "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
-    "category": "BREAKING",
-    "interval": "2m"
-  },
-  {
-    "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
-    "category": "BREAKING",
-    "interval": "2m"
-  },
-  {
-    "url": "https://feeds.npr.org/1001/rss.xml",
-    "category": "BREAKING",
-    "interval": "2m"
-  },
-  {
-    "url": "https://www.aljazeera.com/xml/rss/all.xml",
-    "category": "BREAKING",
-    "interval": "2m"
-  },
-  {
-    "url": "https://www.theguardian.com/world/rss",
-    "category": "BREAKING",
-    "interval": "3m"
-  },
-  {
-    "url": "https://feeds.bloomberg.com/markets/news.rss",
-    "category": "ECONOMY",
-    "interval": "5m"
-  },
-  {
-    "url": "https://www.ft.com/rss/home",
-    "category": "ECONOMY",
-    "interval": "5m"
-  },
-  {
-    "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-    "category": "ECONOMY",
-    "interval": "5m"
-  },
-  {
-    "url": "https://feeds.marketwatch.com/marketwatch/topstories",
-    "category": "ECONOMY",
-    "interval": "5m"
-  },
-  {
-    "url": "https://www.webtekno.com/rss.xml",
-    "category": "TECH",
-    "interval": "10m"
-  },
-  {
-    "url": "https://techcrunch.com/feed/",
-    "category": "TECH",
-    "interval": "10m"
-  },
-  {
-    "url": "https://www.theverge.com/rss/index.xml",
-    "category": "TECH",
-    "interval": "10m"
-  },
-  {
-    "url": "https://feeds.arstechnica.com/arstechnica/index",
-    "category": "TECH",
-    "interval": "10m"
-  },
-  {
-    "url": "https://www.aa.com.tr/tr/rss/default?cat=guncel",
-    "category": "GENERAL",
-    "interval": "3m"
-  },
-  {
-    "url": "https://www.trthaber.com/sondakika.rss",
-    "category": "GENERAL",
-    "interval": "3m"
-  },
-  {
-    "url": "https://www.bloomberght.com/rss",
-    "category": "GENERAL",
-    "interval": "5m"
-  }
+  { "url": "https://feeds.bbci.co.uk/news/world/rss.xml",                    "category": "BREAKING", "interval": "2m" },
+  { "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",         "category": "BREAKING", "interval": "2m" },
+  { "url": "https://www.theguardian.com/world/rss",                           "category": "BREAKING", "interval": "2m" },
+  { "url": "https://www.aljazeera.com/xml/rss/all.xml",                       "category": "BREAKING", "interval": "2m" },
+  { "url": "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml",        "category": "BREAKING", "interval": "2m" },
+  { "url": "https://rss.nytimes.com/services/xml/rss/nyt/MiddleEast.xml",    "category": "BREAKING", "interval": "3m" },
+  { "url": "https://www.theguardian.com/world/middleeast/rss",                "category": "BREAKING", "interval": "3m" },
+  { "url": "https://www.aa.com.tr/en/rss/default?cat=breaking-news",         "category": "BREAKING", "interval": "2m" },
+  { "url": "https://www.aa.com.tr/en/rss/default?cat=world",                 "category": "BREAKING", "interval": "3m" },
+  { "url": "https://www.politico.eu/feed/",                                   "category": "BREAKING", "interval": "5m" },
+  { "url": "https://feeds.skynews.com/feeds/rss/world.xml",                  "category": "BREAKING", "interval": "3m" },
+  { "url": "https://rss.dw.com/rdf/rss-en-top",                              "category": "BREAKING", "interval": "3m" },
+
+  { "url": "https://feeds.bloomberg.com/markets/news.rss",                   "category": "ECONOMY", "interval": "5m" },
+  { "url": "https://www.ft.com/rss/home",                                    "category": "ECONOMY", "interval": "5m" },
+  { "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",          "category": "ECONOMY", "interval": "5m" },
+  { "url": "https://feeds.marketwatch.com/marketwatch/topstories",           "category": "ECONOMY", "interval": "5m" },
+  { "url": "https://www.bloomberght.com/rss",                                "category": "ECONOMY", "interval": "3m" },
+  { "url": "https://www.aa.com.tr/en/rss/default?cat=economy",              "category": "ECONOMY", "interval": "5m" },
+  { "url": "https://www.aa.com.tr/tr/rss/default?cat=ekonomi",              "category": "ECONOMY", "interval": "5m" },
+  { "url": "https://feeds.bbci.co.uk/news/business/rss.xml",                "category": "ECONOMY", "interval": "5m" },
+  { "url": "https://rss.nytimes.com/services/xml/rss/nyt/Economy.xml",      "category": "ECONOMY", "interval": "5m" },
+  { "url": "https://www.cnbc.com/id/20910258/device/rss/rss.html",          "category": "ECONOMY", "interval": "5m" },
+
+  { "url": "https://techcrunch.com/feed/",                                   "category": "TECH", "interval": "10m" },
+  { "url": "https://www.theverge.com/rss/index.xml",                        "category": "TECH", "interval": "10m" },
+  { "url": "https://feeds.arstechnica.com/arstechnica/index",               "category": "TECH", "interval": "10m" },
+  { "url": "https://www.webtekno.com/rss.xml",                              "category": "TECH", "interval": "10m" },
+  { "url": "https://feeds.bbci.co.uk/news/technology/rss.xml",              "category": "TECH", "interval": "10m" },
+  { "url": "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",   "category": "TECH", "interval": "10m" },
+
+  { "url": "https://www.aa.com.tr/tr/rss/default?cat=guncel",               "category": "GENERAL", "interval": "3m" },
+  { "url": "https://www.trthaber.com/sondakika.rss",                        "category": "GENERAL", "interval": "3m" },
+  { "url": "https://t24.com.tr/rss",                                        "category": "GENERAL", "interval": "5m" },
+  { "url": "https://www.cumhuriyet.com.tr/rss/son_dakika.xml",              "category": "GENERAL", "interval": "5m" },
+  { "url": "https://www.ntv.com.tr/son-dakika.rss",                        "category": "GENERAL", "interval": "3m" },
+  { "url": "https://www.haberturk.com/rss/gundem.xml",                     "category": "GENERAL", "interval": "5m" },
+  { "url": "https://feeds.bbci.co.uk/turkce/rss.xml",                      "category": "GENERAL", "interval": "5m" },
+  { "url": "https://www.aa.com.tr/tr/rss/default?cat=politika",            "category": "GENERAL", "interval": "5m" },
+  { "url": "https://www.aa.com.tr/en/rss/default?cat=politics",            "category": "GENERAL", "interval": "5m" },
+  {"url": "https://www.aa.com.tr/tr/rss/default?cat=guncel",                "category": "GENERAL","interval": "3m"}
 ]

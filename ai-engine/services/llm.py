@@ -257,8 +257,19 @@ YAYINLANABİLECEK HABERLER:
 - Piyasaları veya risk algısını etkileyebilecek güçlü gelişmeler
 - Büyük kriz, savaş, afet, diplomatik kırılma, kritik ekonomik veri
 
+TÜRKİYE BAĞLANTI KURALLARI:
+Aşağıdaki durumlarda haberin Türkiye ile "dolaylı bağlantısı" olduğunu kabul et ve PUBLISH yönünde değerlendir:
+- ABD, AB veya Çin ekonomik/ticaret kararları → TL kuru, BIST, ihracat/ithalat doğrudan etkilenir
+- Fed veya ECB faiz kararları → gelişen piyasa (EM) sermaye akışı üzerinden Türkiye'yi etkiler
+- Orta Doğu güvenlik gelişmeleri (Suriye, İran, İsrail, Körfez) → enerji fiyatları, turizm, sınır güvenliği
+- NATO veya savunma gelişmeleri → Türkiye NATO üyesidir, her karar doğrudan bağlayıcıdır
+- Körfez / Hürmüz Boğazı / LNG enerji haberleri → Türkiye enerjisinin büyük bölümünü ithal eder
+- Küresel gıda veya hammadde fiyat şokları → Türkiye'nin cari açığını doğrudan etkiler
+- Rusya-Ukrayna gelişmeleri → enerji, tahıl, turizm ve döviz üzerinden kritik etki
+Bu durumlarda "dolaylı etki var" diyerek PUBLISH kararı verebilirsin; kesin kanıt arama.
+
 KESİN RED:
-- rehber, roundup, “bilmeniz gerekenler”, “everything we know”
+- rehber, roundup, "bilmeniz gerekenler", "everything we know"
 - inceleme, karşılaştırma, liste, test yazıları
 - rutin fiyat/list price/update içerikleri
 - düşük etkili yerel dış haberler
