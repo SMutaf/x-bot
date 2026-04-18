@@ -102,10 +102,10 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 	fmt.Printf("[AI] Decision: %s | Reason: %s | %s\n",
 		res.Decision, res.RejectReason, env.News.Title)
 
-	decision := strings.ToUpper(strings.TrimSpace(res.Decision))
+	decision := models.EditorialDecisionType(strings.ToUpper(strings.TrimSpace(res.Decision)))
 	rejectReason := strings.TrimSpace(res.RejectReason)
 
-	if decision == "REJECT" {
+	if decision == models.DecisionReject {
 		if rejectReason == "" {
 			rejectReason = "llm-editorial-reject"
 		}
@@ -115,7 +115,7 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 		return nil
 	}
 
-	if decision != "PUBLISH" {
+	if decision != models.DecisionPublish {
 		fmt.Printf("AI geçersiz decision döndü (%s): %s\n", res.Decision, env.News.Title)
 		p.recordRejected(env, "ai-invalid-decision")
 		return nil

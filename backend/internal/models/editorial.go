@@ -5,9 +5,9 @@ import "time"
 type EditorialDecisionType string
 
 const (
-	DecisionPublish EditorialDecisionType = "publish"
-	DecisionReject  EditorialDecisionType = "reject"
-	DecisionReview  EditorialDecisionType = "review"
+	DecisionPublish EditorialDecisionType = "PUBLISH"
+	DecisionReject  EditorialDecisionType = "REJECT"
+	DecisionReview  EditorialDecisionType = "REVİEW"
 )
 
 type ApprovalStatus string
