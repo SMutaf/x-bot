@@ -258,15 +258,22 @@ func (s *RSSScraper) fetchWithRetry(source config.RSSSource) (*gofeed.Feed, erro
 		}
 
 		lastErr = err
+		errType := classifyRSSError(err)
 
 		fmt.Printf("[RSS RETRY] source=%s category=%s attempt=%d/3 type=%s url=%s err=%v\n",
 			feedSourceName(source.URL),
 			source.Category,
 			attempt,
-			classifyRSSError(err),
+			errType,
 			source.URL,
 			err,
 		)
+
+		// HTTP 404 veya 403 → retry'a gerek yok, kaynak kalıcı hatalı
+		if errType == "HTTP_404" || errType == "HTTP_403" {
+			fmt.Printf("[RSS SKIP RETRY] Kalıcı HTTP hatası (%s), retry atlanıyor: %s\n", errType, source.URL)
+			break
+		}
 
 		if attempt < 3 {
 			time.Sleep(time.Duration(attempt) * 2 * time.Second)
@@ -309,31 +316,56 @@ func (s *RSSScraper) recordHealthEvent(status sourcehealth.Status, state string)
 	})
 }
 
+// classifyRSSError — hata türünü HTTP status code dahil sınıflandırır.
+// Önceden HTTP hatalar "OTHER" olarak geliyordu, artık HTTP_404/403 ayrı çıkıyor.
 func classifyRSSError(err error) string {
 	msg := strings.ToLower(err.Error())
 
 	switch {
+	case strings.Contains(msg, "404") || strings.Contains(msg, "not found"):
+		return "HTTP_404"
+	case strings.Contains(msg, "403") || strings.Contains(msg, "forbidden"):
+		return "HTTP_403"
+	case strings.Contains(msg, "401") || strings.Contains(msg, "unauthorized"):
+		return "HTTP_401"
+	case strings.Contains(msg, "500") || strings.Contains(msg, "internal server"):
+		return "HTTP_500"
 	case strings.Contains(msg, "invalid utf-8"):
 		return "INVALID_UTF8"
 	case strings.Contains(msg, "no such host"):
 		return "DNS_ERROR"
 	case strings.Contains(msg, "eof"):
 		return "EOF"
-	case strings.Contains(msg, "timeout"):
+	case strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded"):
 		return "TIMEOUT"
+	case strings.Contains(msg, "connection refused"):
+		return "CONN_REFUSED"
 	default:
 		return "OTHER"
 	}
 }
 
+// feedSourceName — URL'den okunabilir kaynak adı döndürür.
 func feedSourceName(url string) string {
 	switch {
+	// Türk kaynakları
 	case strings.Contains(url, "trthaber.com"):
 		return "TRT Haber"
-	case strings.Contains(url, "aljazeera.com"):
-		return "Al Jazeera"
 	case strings.Contains(url, "bloomberght.com"):
 		return "BloombergHT"
+	case strings.Contains(url, "aa.com.tr"):
+		return "Anadolu Ajansı"
+	case strings.Contains(url, "webtekno.com"):
+		return "Webtekno"
+	case strings.Contains(url, "t24.com.tr"):
+		return "T24"
+	case strings.Contains(url, "ntv.com.tr"):
+		return "NTV"
+	case strings.Contains(url, "cumhuriyet.com"):
+		return "Cumhuriyet"
+	case strings.Contains(url, "haberturk.com"):
+		return "Habertürk"
+	// Küresel kaynaklar
 	case strings.Contains(url, "bbci.co.uk"):
 		return "BBC"
 	case strings.Contains(url, "nytimes.com"):
@@ -342,6 +374,8 @@ func feedSourceName(url string) string {
 		return "NPR"
 	case strings.Contains(url, "theguardian.com"):
 		return "The Guardian"
+	case strings.Contains(url, "aljazeera.com"):
+		return "Al Jazeera"
 	case strings.Contains(url, "bloomberg.com"):
 		return "Bloomberg"
 	case strings.Contains(url, "marketwatch.com"):
@@ -350,16 +384,18 @@ func feedSourceName(url string) string {
 		return "CNBC"
 	case strings.Contains(url, "ft.com"):
 		return "FT"
-	case strings.Contains(url, "aa.com.tr"):
-		return "Anadolu Ajansı"
-	case strings.Contains(url, "webtekno.com"):
-		return "Webtekno"
 	case strings.Contains(url, "techcrunch.com"):
 		return "TechCrunch"
 	case strings.Contains(url, "theverge.com"):
 		return "The Verge"
 	case strings.Contains(url, "arstechnica.com"):
 		return "Ars Technica"
+	case strings.Contains(url, "skynews.com"):
+		return "Sky News"
+	case strings.Contains(url, "dw.com"):
+		return "Deutsche Welle"
+	case strings.Contains(url, "politico.eu"):
+		return "Politico EU"
 	default:
 		return "Unknown"
 	}

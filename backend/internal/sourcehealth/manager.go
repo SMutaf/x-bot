@@ -33,7 +33,6 @@ func (m *Manager) ShouldSkip(source config.RSSSource, sourceName string) (bool, 
 	if state.IsDisabled(now) {
 		return true, *state
 	}
-
 	return false, *state
 }
 
@@ -60,7 +59,6 @@ func (m *Manager) RecordFailure(source config.RSSSource, sourceName, errType, er
 	state.LastErrorMessage = errMsg
 	state.LastErrorAt = time.Now()
 	state.DisabledUntil = time.Now().Add(m.cooldownFor(state.ConsecutiveFails, errType))
-
 	return *state
 }
 
@@ -72,14 +70,12 @@ func (m *Manager) Snapshot() []Status {
 	for _, state := range m.states {
 		out = append(out, *state)
 	}
-
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Category != out[j].Category {
 			return out[i].Category < out[j].Category
 		}
 		return out[i].SourceName < out[j].SourceName
 	})
-
 	return out
 }
 
@@ -87,43 +83,49 @@ func (m *Manager) getOrCreateLocked(source config.RSSSource, sourceName string) 
 	if existing, ok := m.states[source.URL]; ok {
 		return existing
 	}
-
 	state := &Status{
 		SourceName: sourceName,
 		URL:        source.URL,
 		Category:   source.Category,
 	}
-
 	m.states[source.URL] = state
 	return state
 }
 
+// cooldownFor — hata türüne ve tekrar sayısına göre bekleme süresi.
 func (m *Manager) cooldownFor(consecutiveFails int, errType string) time.Duration {
-	base := 0 * time.Minute
+	// Kalıcı HTTP hataları — URL yanlış ya da erişim yok, uzun cooldown
+	switch errType {
+	case "HTTP_404":
+		// URL yanlış, sources.json'dan çıkarılmalı.
+		// Botun çalışmasını engellemek için çok uzun cooldown.
+		return 60 * time.Minute
+	case "HTTP_403":
+		// Erişim reddedildi, kaynak büyük ihtimalle bot engeli koymuş.
+		return 30 * time.Minute
+	case "HTTP_401":
+		return 60 * time.Minute
+	case "INVALID_UTF8":
+		return 15 * time.Minute
+	case "DNS_ERROR":
+		// DNS hatası geçici olabilir, orta cooldown
+		if consecutiveFails <= 2 {
+			return 5 * time.Minute
+		}
+		return 15 * time.Minute
+	}
 
+	// Geçici hatalar (timeout, eof, connection refused vb.) — progressif cooldown
 	switch {
 	case consecutiveFails <= 1:
-		base = 0
+		return 0
 	case consecutiveFails == 2:
-		base = 2 * time.Minute
+		return 2 * time.Minute
 	case consecutiveFails == 3:
-		base = 5 * time.Minute
+		return 5 * time.Minute
 	default:
-		base = 10 * time.Minute
+		return 10 * time.Minute
 	}
-
-	switch errType {
-	case "INVALID_UTF8":
-		if base < 10*time.Minute {
-			base = 10 * time.Minute
-		}
-	case "DNS_ERROR":
-		if base < 5*time.Minute {
-			base = 5 * time.Minute
-		}
-	}
-
-	return base
 }
 
 func FormatSnapshot(snapshot []Status) string {
@@ -149,16 +151,13 @@ func FormatSnapshot(snapshot []Status) string {
 			healthState,
 			s.ConsecutiveFails,
 		)
-
 		if s.LastErrorType != "" {
 			line += fmt.Sprintf(" | lastError=%s", s.LastErrorType)
 		}
 		if !s.LastSuccessAt.IsZero() {
 			line += fmt.Sprintf(" | lastSuccess=%s", s.LastSuccessAt.Format("15:04:05"))
 		}
-
 		result += line + "\n"
 	}
-
 	return result
 }

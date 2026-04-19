@@ -5,76 +5,48 @@ func IsBreakingRelevant(text string) bool {
 		return false
 	}
 
+	// Kesin içerik tipleri → red
 	if containsAny(text, []string{
-		"study suggests", "study finds", "review", "guide", "analysis", "opinion",
-		"how to", "what to know", "feature", "profile", "interview",
-		"strategy to", "hopes", "whether to", "considers", "could", "may prove",
+		"study suggests", "study finds", "review", "guide", "opinion",
+		"how to", "what to know", "feature", "profile",
+		"strategy to", "may prove",
 	}) {
 		return false
 	}
 
-	hasMajorActor := false
-	for actor := range majorActors {
-		if contains(text, actor) {
-			hasMajorActor = true
-			break
-		}
-	}
+	hasMajorActor := hasAnyMajorActor(text)
+	hasAction := hasAnyActionVerb(text)
 
-	hasAction := false
-	for verb := range actionVerbs {
-		if contains(text, verb) {
-			hasAction = true
-			break
-		}
-	}
-
+	// Türkiye + herhangi bir aksiyon → geç
 	if containsAny(text, turkeyKeywords) && hasAction {
 		return true
 	}
 
+	// Büyük aktör + aksiyon → geç
 	if hasMajorActor && hasAction {
 		return true
 	}
 
+	// Kritik güvenlik terimleri + büyük aktör → geç (aksiyon fiili olmasa bile)
 	if containsAny(text, []string{
 		"missile", "airstrike", "drone", "ceasefire", "hostage", "nuclear",
 		"coup", "martial law", "earthquake", "terror", "terror alert", "gas facility",
+		"landmine", "sanctions", "embargo",
+	}) && hasMajorActor {
+		return true
+	}
+
+	// Diplomatik hareketler — büyük aktör + hareket terimi → geç
+	// "ABD'li heyet İslamabad'a indi", "müzakereler için uçak" gibi haberler
+	if containsAny(text, []string{
+		"negotiat", "ceasefire talks", "peace talks", "müzakere", "görüşme",
+		"heyet", "delegation", "diplomat",
 	}) && hasMajorActor {
 		return true
 	}
 
 	return false
 }
-
-/*func IsEconomyRelevant(text string) bool {
-	if containsAny(text, personalFinanceKeywords) {
-		return false
-	}
-	if containsAny(text, rejectEntertainment) {
-		return false
-	}
-	if containsAny(text, []string{
-		"opinion", "analysis", "review", "guide", "what to know", "feature",
-		"healthy returns", "for consumers", "jim cramer", "wealth management push",
-	}) {
-		return false
-	}
-
-	if !containsAny(text, economyTerms) {
-		return false
-	}
-
-	if !containsAny(text, strongEconomyTerms) && !containsAny(text, []string{
-		"stocks decline", "prices surge", "fuel prices", "oil risk",
-		"gas facility", "market volatility", "financial stability",
-		"war fuels energy worries", "spiking oil prices",
-	}) {
-		return false
-	}
-
-	return true
-}*/
 
 func IsTechRelevant(text string) bool {
 	if containsAny(text, rejectReviewPatterns) {
@@ -93,16 +65,39 @@ func IsGeneralRelevant(text string) bool {
 		return false
 	}
 
+	// Türkiye keywordü varsa direkt geç
 	if containsAny(text, turkeyKeywords) {
 		return true
 	}
 
-	if containsAny(text, []string{
+	// Diplomatik/güvenlik olayları — aktör + aksiyon şartı
+	criticalActors := []string{
+		"iran", "israel", "trump", "erdogan", "fidan",
 		"embassy", "ambassador", "diplomacy", "diplomatic", "foreign minister",
-		"dışişleri", "savunma", "güvenlik", "military", "ordu", "sınır",
+		"dışişleri", "savunma", "military", "ordu", "sınır",
+		"pakistan", "islamabad", "hindistan", "india",
+	}
+
+	hasCriticalActor := containsAny(text, criticalActors)
+	hasAction := hasAnyActionVerb(text)
+
+	if hasCriticalActor && hasAction {
+		return true
+	}
+
+	// Diplomatik hareket terimleri — aktör varsa aksiyon şartı arama
+	if containsAny(text, []string{
+		"müzakere", "negotiat", "heyet", "delegation", "ceasefire talks",
+		"peace talks", "görüşme", "diplomat",
+	}) && hasCriticalActor {
+		return true
+	}
+
+	// Aksiyon fiili şartı aranmaksızın geçebilecek ağır terimler
+	if containsAny(text, []string{
 		"ateşkes", "patlama", "deprem", "saldırı", "seçim", "parliament",
 		"gaz tesisi", "gas facility", "radar tesisi", "missile", "airstrike",
-		"iran", "israel", "trump", "erdogan", "fidan",
+		"güvenlik konseyi", "nato summit", "bm", "landmine", "nükleer",
 	}) {
 		return true
 	}

@@ -6,7 +6,6 @@
   { "url": "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml",        "category": "BREAKING", "interval": "2m" },
   { "url": "https://rss.nytimes.com/services/xml/rss/nyt/MiddleEast.xml",    "category": "BREAKING", "interval": "3m" },
   { "url": "https://www.theguardian.com/world/middleeast/rss",                "category": "BREAKING", "interval": "3m" },
-  { "url": "https://www.aa.com.tr/en/rss/default?cat=breaking-news",         "category": "BREAKING", "interval": "2m" },
   { "url": "https://www.aa.com.tr/en/rss/default?cat=world",                 "category": "BREAKING", "interval": "3m" },
   { "url": "https://www.politico.eu/feed/",                                   "category": "BREAKING", "interval": "5m" },
   { "url": "https://feeds.skynews.com/feeds/rss/world.xml",                  "category": "BREAKING", "interval": "3m" },
@@ -32,7 +31,6 @@
 
   { "url": "https://www.aa.com.tr/tr/rss/default?cat=guncel",               "category": "GENERAL", "interval": "3m" },
   { "url": "https://www.trthaber.com/sondakika.rss",                        "category": "GENERAL", "interval": "3m" },
-  { "url": "https://t24.com.tr/rss",                                        "category": "GENERAL", "interval": "5m" },
   { "url": "https://www.cumhuriyet.com.tr/rss/son_dakika.xml",              "category": "GENERAL", "interval": "5m" },
   { "url": "https://www.ntv.com.tr/son-dakika.rss",                        "category": "GENERAL", "interval": "3m" },
   { "url": "https://www.haberturk.com/rss/gundem.xml",                     "category": "GENERAL", "interval": "5m" },

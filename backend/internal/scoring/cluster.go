@@ -11,6 +11,10 @@ func ClusterScore(clusterCount int) float64 {
 	case clusterCount >= 2:
 		return 65
 	default:
-		return 0
+		// Tek kaynaklı haberler artık 0 almıyor.
+		// MinClusterCount=1 olan kategoriler (ECONOMY, TECH, GENERAL) için
+		// tüm ağırlık keyword'e (0.54-0.60) düşüyordu.
+		// 20 puanlık baseline ile scoring dengesi korunuyor.
+		return 20
 	}
 }

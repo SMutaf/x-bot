@@ -49,32 +49,25 @@ func StreamHandler(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			fmt.Println("Client disconnected")
 			return
-
 		default:
 			file, err := os.Open(filePath)
 			if err == nil {
 				scanner := bufio.NewScanner(file)
 				currentLine := 0
-
 				for scanner.Scan() {
 					currentLine++
-
 					if currentLine <= lastLineCount {
 						continue
 					}
-
 					var item PublishedItem
 					if err := json.Unmarshal(scanner.Bytes(), &item); err != nil {
 						continue
 					}
-
 					if !matchesView(item, viewID) {
 						continue
 					}
-
 					sendEvent(w, flusher, "news.published", item)
 				}
-
 				lastLineCount = currentLine
 				_ = file.Close()
 			}
@@ -85,7 +78,6 @@ func StreamHandler(w http.ResponseWriter, r *http.Request) {
 				})
 				lastHeartbeat = time.Now()
 			}
-
 			time.Sleep(2 * time.Second)
 		}
 	}
@@ -96,22 +88,56 @@ func sendEvent(w http.ResponseWriter, flusher http.Flusher, eventName string, pa
 	if err != nil {
 		return
 	}
-
 	fmt.Fprintf(w, "event: %s\n", eventName)
 	fmt.Fprintf(w, "data: %s\n\n", data)
 	flusher.Flush()
 }
 
+// matchesView — hangi haberin hangi view'da görüneceğini belirler.
 func matchesView(item PublishedItem, viewID string) bool {
 	switch viewID {
+
 	case "turkey-critical":
-		return item.Category == "GENERAL" && item.Virality >= 30
+		// Türkiye'yi etkileyen her kategoriden önemli haber
+		// BREAKING: tüm kritik breaking haberler
+		// GENERAL: Türkiye'ye doğrudan dokunan haberler
+		// ECONOMY: Türkiye ekonomisini etkileyen haberler
+		switch item.Category {
+		case "BREAKING":
+			return item.Virality >= 35
+		case "GENERAL":
+			return item.Virality >= 25
+		case "ECONOMY":
+			return item.Virality >= 24
+		default:
+			return false
+		}
 
 	case "global-high-impact":
-		return (item.Category == "BREAKING" || item.Category == "GENERAL") && item.Virality >= 35
+		// Küresel ölçekte yüksek etkili haberler
+		switch item.Category {
+		case "BREAKING":
+			return item.Virality >= 38
+		case "GENERAL":
+			return item.Virality >= 35
+		case "ECONOMY":
+			return item.Virality >= 30
+		default:
+			return false
+		}
 
 	case "economy-markets":
-		return item.Category == "ECONOMY" || (item.Category == "GENERAL" && item.Virality >= 40)
+		// Ekonomi ve piyasa haberleri
+		switch item.Category {
+		case "ECONOMY":
+			return true // tüm economy haberleri
+		case "BREAKING":
+			return item.Virality >= 40 // çok güçlü breaking ekonomi etkili haberler
+		case "GENERAL":
+			return item.Virality >= 38
+		default:
+			return false
+		}
 
 	case "tech-watch":
 		return item.Category == "TECH"

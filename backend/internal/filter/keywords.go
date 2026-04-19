@@ -8,16 +8,19 @@ import (
 var startsWithPatterns = []string{
 	"why ", "what is ", "what are ", "what do ", "what does ",
 	"what would ", "what will ", "what should ",
-	"how ", "who is ", "who are ", "who was ", "who will ",
+	"who is ", "who are ", "who was ", "who will ",
 	"where is ", "where are ", "where was ",
 	"when is ", "when will ", "when did ",
-	"is ", "are ", "was ", "were ",
-	"will ", "would ", "could ", "should ",
-	"can ", "did ", "does ", "do ",
+	"how to ", "how does ", "how do ", "how can ", "how should ",
+	"are ", "was ", "were ",
+	"would ", "should ",
+	"did ", "does ", "do ",
 	"has ", "have ", "had ",
 	"watch:", "explainer:", "analysis:", "opinion:",
 	"timeline:", "profile:", "live:", "fact check:",
 	"in pictures:", "in charts:", "comment:", "guide:",
+	// Format prefix olarak "interview:" elenir ama içerikte "interview" geçmesi elenmez
+	"interview:",
 }
 
 var endsWithPatterns = []string{
@@ -69,6 +72,7 @@ var emptyTitles = []string{
 }
 
 var actionVerbs = map[string]int{
+	// İngilizce aksiyon fiilleri
 	"attack":   16,
 	"strike":   16,
 	"launch":   12,
@@ -94,16 +98,49 @@ var actionVerbs = map[string]int{
 	"seize":    12,
 	"detain":   10,
 	"raid":     12,
-	"saldırı":  16,
-	"deprem":   20,
-	"patlama":  16,
-	"öldü":     18,
-	"yaralı":   12,
-	"idam":     16,
-	"ateşkes":  12,
-	"vurdu":    16,
-	"vuruldu":  16,
-	"patladı":  16,
+	"land":     10,
+	"arrive":   10,
+	"depart":   8,
+	"meet":     8,
+	"sign":     10,
+	"impose":   12,
+	"cut":      10,
+	"raise":    10,
+	"surge":    12,
+	"fall":     10,
+	"flee":     12,
+	// Türkçe aksiyon fiilleri
+	"saldırı":          16,
+	"deprem":           20,
+	"patlama":          16,
+	"öldü":             18,
+	"yaralı":           12,
+	"idam":             16,
+	"ateşkes":          12,
+	"vurdu":            16,
+	"vuruldu":          16,
+	"patladı":          16,
+	"indi":             10, // uçak/helikopter indi, heyetler geldi
+	"vardı":            10, // konvoy vardı, ekip vardı
+	"kalktı":           8,
+	"toplandı":         8,
+	"imzalandı":        12,
+	"onaylandı":        10,
+	"reddedildi":       10,
+	"gözaltına alındı": 12,
+	"tutuklandı":       12,
+	"istifa etti":      12,
+	"açıkladı":         8,
+	"duyurdu":          8,
+	"uyardı":           10,
+	"yasakladı":        12,
+	"yaptırım":         12,
+	"başladı":          8,
+	"sona erdi":        10,
+	"çöktü":            16,
+	"kapatıldı":        10,
+	"devraldı":         10,
+	"müdahale":         12,
 }
 
 var majorActors = map[string]int{
@@ -147,6 +184,9 @@ var majorActors = map[string]int{
 	"ab":            8,
 	"abd":           8,
 	"fidan":         10,
+	"islamabad":     8,
+	"hindistan":     6,
+	"india":         6,
 }
 
 var shortActors = map[string]int{
@@ -185,8 +225,7 @@ var techTerms = []string{
 	"apple", "nvidia", "amd", "intel", "tesla", "cyber", "hack", "hacker", "data breach",
 	"security", "güvenlik", "chip", "semiconductor", "startup", "robot", "robotics",
 	"software", "app", "uygulama", "iphone", "android", "gemini", "claude",
-	"deepmind", "api", "cloud", "aws", "azure", "cloudflare", "fbi is buying americans’ location data",
-	"fbi is buying americans' location data",
+	"deepmind", "api", "cloud", "aws", "azure", "cloudflare",
 }
 
 var rejectEntertainment = []string{
@@ -270,4 +309,22 @@ func hasPrefix(text, prefix string) bool {
 
 func hasSuffix(text, suffix string) bool {
 	return strings.HasSuffix(text, suffix)
+}
+
+func hasAnyActionVerb(text string) bool {
+	for verb := range actionVerbs {
+		if contains(text, verb) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAnyMajorActor(text string) bool {
+	for actor := range majorActors {
+		if contains(text, actor) {
+			return true
+		}
+	}
+	return false
 }
