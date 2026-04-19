@@ -1,5 +1,7 @@
 import os
 import re
+import time
+import logging
 from datetime import datetime, timezone
 from typing import Optional, Literal
 
@@ -12,6 +14,14 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 load_dotenv()
 
+# ── Logging ──────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("llm")
+
 SENSITIVE_KEYWORDS = [
     "öldü", "ölü", "hayatını kaybetti", "şehit", "vefat", "ölüm",
     "saldırı", "bomba", "füze", "savaş", "çatışma", "terör",
@@ -22,41 +32,14 @@ SENSITIVE_KEYWORDS = [
 ]
 
 PRE_FILTER_PATTERNS = [
-    "fiyat listesi",
-    "fiyat güncelleme",
-    "zam geldi",
-    "indirim haberi",
-    "kampanya başladı",
-    "hakkında bildiğimiz her şey",
-    "bilmeniz gereken her şey",
-    "bilmeniz gerekenler",
-    "nasıl kullanılır",
-    "nasıl yapılır",
-    "rehberi",
-    "başlangıç rehberi",
-    "kullanım kılavuzu",
-    "en iyi 5",
-    "en iyi 10",
-    "en iyi 15",
-    "en iyi 20",
-    "karşılaştırma:",
-    "karşılaştırması",
-    "inceleme:",
-    "incelemesi",
-    "test ettik",
-    "kullandık",
-    "deneyimledik",
-    "everything we know",
-    "all you need to know",
-    "how to use",
-    "hands-on",
-    "review:",
-    "explainer:",
-    "analysis:",
-    " explained",
-    "best of",
-    "top 10",
-    "top 5",
+    "fiyat listesi", "fiyat güncelleme", "zam geldi", "indirim haberi",
+    "kampanya başladı", "hakkında bildiğimiz her şey", "bilmeniz gereken her şey",
+    "bilmeniz gerekenler", "nasıl kullanılır", "nasıl yapılır", "rehberi",
+    "başlangıç rehberi", "kullanım kılavuzu", "en iyi 5", "en iyi 10",
+    "en iyi 15", "en iyi 20", "karşılaştırma:", "karşılaştırması",
+    "inceleme:", "incelemesi", "test ettik", "kullandık", "deneyimledik",
+    "everything we know", "all you need to know", "how to use", "hands-on",
+    "review:", "explainer:", "analysis:", " explained", "best of", "top 10", "top 5",
 ]
 
 STRICT_TECH_SOURCES = {"webtekno", "chip", "donanimhaber", "shiftdelete", "technopat"}
@@ -64,7 +47,6 @@ STRICT_TECH_SOURCES = {"webtekno", "chip", "donanimhaber", "shiftdelete", "techn
 
 def pre_filter(title: str, source: str, category: str) -> Optional[str]:
     text = title.lower()
-
     for pattern in PRE_FILTER_PATTERNS:
         if pattern in text:
             return f"pre-filter-pattern:{pattern}"
@@ -78,7 +60,6 @@ def pre_filter(title: str, source: str, category: str) -> Optional[str]:
         ]
         if not any(sig in text for sig in action_signals):
             return "pre-filter-no-action-signal"
-
     return None
 
 
@@ -86,29 +67,17 @@ class EditorialAnalysisOutput(BaseModel):
     decision: Literal["PUBLISH", "REJECT"] = Field(
         description="Haber yayınlanacaksa PUBLISH, editoryel filtreden geçmezse REJECT"
     )
-    reject_reason: Optional[str] = Field(
-        default="",
-        description="REJECT ise kısa sebep"
-    )
-    hook: Optional[str] = Field(
-        default="",
-        description="Kısa, dikkat çekici ilk satır. Türkçe. Maksimum 10 kelime."
-    )
-    summary: Optional[str] = Field(
-        default="",
-        description="Haberi 1-2 kısa cümlede anlaşılır şekilde özetleyen Türkçe metin."
-    )
-    importance: Optional[str] = Field(
-        default="",
-        description="Bu haberin neden önemli olduğunu anlatan 1 kısa cümlelik Türkçe metin."
-    )
-    sentiment: Literal["positive", "negative", "neutral"] = Field(
-        default="neutral",
-        description="positive, negative veya neutral"
-    )
+    reject_reason: Optional[str] = Field(default="", description="REJECT ise kısa sebep")
+    hook: Optional[str] = Field(default="", description="Kısa, dikkat çekici ilk satır. Türkçe. Maksimum 10 kelime.")
+    summary: Optional[str] = Field(default="", description="Haberi 1-2 kısa cümlede anlaşılır şekilde özetleyen Türkçe metin.")
+    importance: Optional[str] = Field(default="", description="Bu haberin neden önemli olduğunu anlatan 1 kısa cümlelik Türkçe metin.")
+    sentiment: Literal["positive", "negative", "neutral"] = Field(default="neutral", description="positive, negative veya neutral")
 
 
 class GeminiService:
+    # Tek bir LLM çağrısı için maksimum bekleme süresi (saniye)
+    LLM_TIMEOUT_SECONDS = 45
+
     def __init__(self):
         if not os.getenv("GOOGLE_API_KEY"):
             raise ValueError("GOOGLE_API_KEY ortam değişkeni bulunamadı!")
@@ -116,27 +85,24 @@ class GeminiService:
         self.llm = ChatGoogleGenerativeAI(
             model="gemma-3-12b-it",
             temperature=0.3,
-            convert_system_message_to_human=True
+            convert_system_message_to_human=True,
+            request_timeout=self.LLM_TIMEOUT_SECONDS,
         )
         self.parser = JsonOutputParser(pydantic_object=EditorialAnalysisOutput)
+        logger.info("GeminiService başlatıldı (model=gemma-3-12b-it, timeout=%ds)", self.LLM_TIMEOUT_SECONDS)
 
     def _detect_news_type(self, title: str, content: str, category: str) -> str:
         text = (title + " " + content).lower()
-
         for keyword in SENSITIVE_KEYWORDS:
             if keyword in text:
                 return "TRAGEDY"
-
         if category == "BREAKING":
             return "BREAKING_SERIOUS"
-
         if category == "TECH":
             if any(word in text for word in ["tanıttı", "duyurdu", "çıktı", "launch", "announce", "reveal"]):
                 return "TECH_LAUNCH"
-
         if category == "ECONOMY":
             return "ECONOMY_NEWS"
-
         return "GENERAL_NEWS"
 
     def _get_prompt_strategy(self, news_type: str) -> dict:
@@ -147,7 +113,6 @@ class GeminiService:
                 "summary_rule": "Olayı net şekilde anlat. 1-2 cümle yeterli. Abartılı sıfat kullanma.",
                 "importance_rule": "Neden önemli olduğunu sakin ve saygılı şekilde belirt.",
             }
-
         if news_type == "BREAKING_SERIOUS":
             return {
                 "tone": "Hızlı, net, güvenilir. Fazla duygusal veya aşırı kışkırtıcı olma.",
@@ -155,7 +120,6 @@ class GeminiService:
                 "summary_rule": "Ne olduğunu açık şekilde yaz. Kısa, temiz ve anlaşılır tut.",
                 "importance_rule": "Piyasa, güvenlik, diplomasi veya bölgesel etkiyi tek cümlede açıkla.",
             }
-
         if news_type == "TECH_LAUNCH":
             return {
                 "tone": "Canlı ama profesyonel. Çok oyuncaklaştırma.",
@@ -163,7 +127,6 @@ class GeminiService:
                 "summary_rule": "Ürünü veya yeniliği 1-2 kısa cümlede anlat.",
                 "importance_rule": "Neden dikkat çekici olduğunu kısa söyle.",
             }
-
         if news_type == "ECONOMY_NEWS":
             return {
                 "tone": "Net, sade, etkisini anlatan. Aşırı teknikleşme.",
@@ -171,7 +134,6 @@ class GeminiService:
                 "summary_rule": "Veriyi veya kararı basit Türkçeyle özetle.",
                 "importance_rule": "Türkiye, piyasalar veya küresel ekonomi etkisini belirt.",
             }
-
         return {
             "tone": "Dengeli, açık ve doğal Türkçe kullan.",
             "hook_rule": "Hook ilk bakışta haberi okutmalı.",
@@ -182,14 +144,11 @@ class GeminiService:
     def _calculate_time_context(self, published_at: Optional[datetime]) -> str:
         if not published_at:
             return ""
-
         now = datetime.now(timezone.utc)
         if published_at.tzinfo is None:
             published_at = published_at.replace(tzinfo=timezone.utc)
-
         diff = now - published_at
         minutes = int(diff.total_seconds() / 60)
-
         if minutes < 5:
             return "Haber çok taze. Dili güncel ve canlı tut."
         if minutes < 30:
@@ -230,21 +189,26 @@ class GeminiService:
         cluster_count: int = 1,
         virality: int = 0,
     ):
+        short_title = title[:60] + "..." if len(title) > 60 else title
+
+        # ── Pre-filter (Python tarafında, LLM'e gitmeden) ────────────────────
         pre_reject = pre_filter(title, source, category)
         if pre_reject:
-            print(f"[PRE-FILTER] Direkt reddedildi ({pre_reject}): {title}")
+            logger.info("[PRE-FILTER] RED (%s): %s", pre_reject, short_title)
             return {
                 "decision": "REJECT",
                 "reject_reason": pre_reject,
-                "hook": "",
-                "summary": "",
-                "importance": "",
-                "sentiment": "neutral",
+                "hook": "", "summary": "", "importance": "", "sentiment": "neutral",
             }
 
         news_type = self._detect_news_type(title, content or "", category)
         strategy = self._get_prompt_strategy(news_type)
         time_context = self._calculate_time_context(published_at)
+
+        logger.info(
+            "[AI] Analiz başlıyor | cat=%s type=%s cluster=%d virality=%d | %s",
+            category, news_type, cluster_count, virality, short_title
+        )
 
         template = """
 Sen Türkiye odaklı bir haber sisteminin baş editörüsün.
@@ -318,12 +282,14 @@ PUBLISH ise:
                 "time_context", "cluster_count", "virality",
                 "tone", "hook_rule", "summary_rule", "importance_rule",
             ],
-            partial_variables={
-                "format_instructions": self.parser.get_format_instructions()
-            },
+            partial_variables={"format_instructions": self.parser.get_format_instructions()},
         )
 
         chain = prompt | self.llm | self.parser
+
+        # ── LLM çağrısı — süre loglanıyor ────────────────────────────────────
+        t0 = time.time()
+        logger.info("[AI] LLM isteği gönderiliyor... (%s)", short_title)
 
         try:
             result = self._invoke_chain(chain, {
@@ -341,46 +307,49 @@ PUBLISH ise:
                 "importance_rule": strategy["importance_rule"],
             })
         except Exception as e:
-            print(f"[LLM HATA] {e} → {title}")
+            elapsed = time.time() - t0
+            logger.error("[AI] LLM HATA (%.1fs) — %s → %s", elapsed, type(e).__name__, short_title)
+            logger.error("[AI] Hata detayı: %s", str(e))
             return {
                 "decision": "REJECT",
                 "reject_reason": "llm-exception",
-                "hook": "",
-                "summary": "",
-                "importance": "",
-                "sentiment": "neutral",
+                "hook": "", "summary": "", "importance": "", "sentiment": "neutral",
             }
 
+        elapsed = time.time() - t0
         decision = self._clean_text(result.get("decision", "")).upper()
+        logger.info("[AI] LLM yanıt geldi (%.1fs) → %s | %s", elapsed, decision, short_title)
 
         if decision == "REJECT":
             reason = self._clean_text(result.get("reject_reason", "editorial-reject"))
-            print(f"[LLM REJECT] ({reason}): {title}")
+            logger.info("[AI] REJECT (%s): %s", reason, short_title)
             return {
                 "decision": "REJECT",
                 "reject_reason": reason or "editorial-reject",
-                "hook": "",
-                "summary": "",
-                "importance": "",
-                "sentiment": "neutral",
+                "hook": "", "summary": "", "importance": "", "sentiment": "neutral",
             }
 
         if decision != "PUBLISH":
-            print(f"[LLM GEÇERSİZ KARAR] ({decision}): {title}")
+            logger.warning("[AI] GEÇERSİZ KARAR (%s): %s", decision, short_title)
             return {
                 "decision": "REJECT",
                 "reject_reason": "invalid-decision",
-                "hook": "",
-                "summary": "",
-                "importance": "",
-                "sentiment": "neutral",
+                "hook": "", "summary": "", "importance": "", "sentiment": "neutral",
             }
+
+        hook = self._clean_text(result.get("hook", ""))
+        summary = self._clean_text(result.get("summary", ""))
+        importance = self._clean_text(result.get("importance", ""))
+        sentiment = self._normalize_sentiment(result.get("sentiment", "neutral"))
+
+        logger.info("[AI] PUBLISH | hook='%s...' sentiment=%s | %s",
+                    hook[:40], sentiment, short_title)
 
         return {
             "decision": "PUBLISH",
             "reject_reason": "",
-            "hook": self._clean_text(result.get("hook", "")),
-            "summary": self._clean_text(result.get("summary", "")),
-            "importance": self._clean_text(result.get("importance", "")),
-            "sentiment": self._normalize_sentiment(result.get("sentiment", "neutral")),
+            "hook": hook,
+            "summary": summary,
+            "importance": importance,
+            "sentiment": sentiment,
         }
