@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { env } from "../../lib/env";
 import type { FeedItem } from "../../features/feed/types";
 import TopBar from "./TopBar";
@@ -9,6 +9,10 @@ import RightDetailPane from "./RightDetailPane";
 export default function Shell() {
   const [activeViewId, setActiveViewId] = useState<string>(env.defaultView);
   const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
+
+  useEffect(() => {
+    setSelectedItem(null);
+  }, [activeViewId]);
 
   return (
     <div className="app-shell">

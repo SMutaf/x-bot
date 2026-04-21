@@ -12,6 +12,8 @@ export default function MainStream(props: MainStreamProps) {
   const { activeViewId, selectedItem, onSelectItem } = props;
   const { connection, latestEventName, latestRawData, items, isInitialLoading } =
     useFeedStream(activeViewId);
+  const getCardTitle = (item: FeedItem) => item.hook || item.title;
+  const getCardDescription = (item: FeedItem) => item.summary || item.description || "";
 
   useEffect(() => {
     if (!selectedItem && items.length > 0) {
@@ -67,6 +69,8 @@ export default function MainStream(props: MainStreamProps) {
                 !!selectedItem &&
                 (selectedItem.link === item.link ||
                   (selectedItem.title === item.title && selectedItem.time === item.time));
+              const cardTitle = getCardTitle(item);
+              const cardDescription = getCardDescription(item);
 
               return (
                 <article
@@ -88,7 +92,9 @@ export default function MainStream(props: MainStreamProps) {
                     <span>{item.source}</span>
                   </div>
 
-                  <h3 className="feed-card__title">{item.title}</h3>
+                  <h3 className="feed-card__title">{cardTitle}</h3>
+
+                  {cardDescription ? <p>{cardDescription}</p> : null}
 
                   <div className="feed-card__stats">
                     <span>Virality: {item.virality ?? "-"}</span>

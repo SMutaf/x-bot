@@ -6,6 +6,10 @@ type PublishedNewsEvent struct {
 	Time         time.Time `json:"time"`
 	Title        string    `json:"title"`
 	Description  string    `json:"description"`
+	Hook         string    `json:"hook"`
+	Summary      string    `json:"summary"`
+	Importance   string    `json:"importance"`
+	Sentiment    string    `json:"sentiment"`
 	Category     string    `json:"category"`
 	Source       string    `json:"source"`
 	Link         string    `json:"link"`

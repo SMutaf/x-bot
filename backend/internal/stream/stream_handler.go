@@ -14,6 +14,10 @@ type PublishedItem struct {
 	Time         string `json:"time"`
 	Title        string `json:"title"`
 	Description  string `json:"description"`
+	Hook         string `json:"hook"`
+	Summary      string `json:"summary"`
+	Importance   string `json:"importance"`
+	Sentiment    string `json:"sentiment"`
 	Category     string `json:"category"`
 	Source       string `json:"source"`
 	Link         string `json:"link"`
@@ -93,57 +97,48 @@ func sendEvent(w http.ResponseWriter, flusher http.Flusher, eventName string, pa
 	flusher.Flush()
 }
 
-// matchesView — hangi haberin hangi view'da görüneceğini belirler.
 func matchesView(item PublishedItem, viewID string) bool {
-	/*	switch viewID {
-
-		case "turkey-critical":
-			// Türkiye'yi etkileyen her kategoriden önemli haber
-			// BREAKING: tüm kritik breaking haberler
-			// GENERAL: Türkiye'ye doğrudan dokunan haberler
-			// ECONOMY: Türkiye ekonomisini etkileyen haberler
-			switch item.Category {
-			case "BREAKING":
-				return item.Virality >= 35
-			case "GENERAL":
-				return item.Virality >= 25
-			case "ECONOMY":
-				return item.Virality >= 24
-			default:
-				return false
-			}
-
-		case "global-high-impact":
-			// Küresel ölçekte yüksek etkili haberler
-			switch item.Category {
-			case "BREAKING":
-				return item.Virality >= 38
-			case "GENERAL":
-				return item.Virality >= 35
-			case "ECONOMY":
-				return item.Virality >= 30
-			default:
-				return false
-			}
-
-		case "economy-markets":
-			// Ekonomi ve piyasa haberleri
-			switch item.Category {
-			case "ECONOMY":
-				return true // tüm economy haberleri
-			case "BREAKING":
-				return item.Virality >= 40 // çok güçlü breaking ekonomi etkili haberler
-			case "GENERAL":
-				return item.Virality >= 38
-			default:
-				return false
-			}
-
-		case "tech-watch":
-			return item.Category == "TECH"
-
+	switch viewID {
+	case "turkey-critical":
+		switch item.Category {
+		case "BREAKING":
+			return item.Virality >= 35
+		case "GENERAL":
+			return item.Virality >= 25
+		case "ECONOMY":
+			return item.Virality >= 24
 		default:
+			return false
+		}
+
+	case "global-high-impact":
+		switch item.Category {
+		case "BREAKING":
+			return item.Virality >= 38
+		case "GENERAL":
+			return item.Virality >= 35
+		case "ECONOMY":
+			return item.Virality >= 30
+		default:
+			return false
+		}
+
+	case "economy-markets":
+		switch item.Category {
+		case "ECONOMY":
 			return true
-		}*/
-	return true
+		case "BREAKING":
+			return item.Virality >= 40
+		case "GENERAL":
+			return item.Virality >= 38
+		default:
+			return false
+		}
+
+	case "tech-watch":
+		return item.Category == "TECH"
+
+	default:
+		return true
+	}
 }

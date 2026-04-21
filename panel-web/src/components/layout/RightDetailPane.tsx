@@ -13,23 +13,28 @@ export default function RightDetailPane(props: RightDetailPaneProps) {
         <div className="panel-title">Detay</div>
 
         <div className="detail-card">
-          <h3 className="detail-card__title">Seçili Haber</h3>
+          <h3 className="detail-card__title">Secili Haber</h3>
           <p className="detail-card__text">
-            Stream listesinden bir karta tıklanınca detay burada açılacak.
+            Stream listesinden bir karta tiklaninca detay burada acilacak.
           </p>
         </div>
       </aside>
     );
   }
 
+  const displayTitle = selectedItem.hook || selectedItem.title;
+  const displaySummary = selectedItem.summary;
+  const rawDescription = selectedItem.description;
+  const displayImportance = selectedItem.importance;
+
   return (
     <aside className="right-detail-pane">
       <div className="panel-title">Detay</div>
 
       <div className="detail-card">
-        <h3 className="detail-card__title">Seçili Haber</h3>
-        <p className="detail-card__text detail-card__label">Başlık</p>
-        <p className="detail-card__value">{selectedItem.title}</p>
+        <h3 className="detail-card__title">Secili Haber</h3>
+        <p className="detail-card__text detail-card__label">Baslik</p>
+        <p className="detail-card__value">{displayTitle}</p>
 
         <p className="detail-card__text detail-card__label">Kaynak</p>
         <p className="detail-card__value">{selectedItem.source}</p>
@@ -60,13 +65,18 @@ export default function RightDetailPane(props: RightDetailPaneProps) {
           target="_blank"
           rel="noreferrer"
         >
-          Orijinal haberi aç
+          Orijinal haberi ac
         </a>
       </div>
 
       <div className="detail-card">
-         <h3 className="detail-card__title">Detay</h3>
-         <p>{selectedItem.description}</p>
+        <h3 className="detail-card__title">Detay</h3>
+        <p>{rawDescription || "-"}</p>
+      </div>
+
+      <div className="detail-card">
+        <h3 className="detail-card__title">Önem</h3>
+        <p>{displayImportance || "-"}</p>
       </div>
     </aside>
   );

@@ -14,11 +14,6 @@ export default function TopBar() {
         />
       </div>
     
-      <div className="topbar__right">
-        <button className="ghost-button" type="button">
-          Kullanıcı
-        </button>
-      </div>
     </header>
   );
 }

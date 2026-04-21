@@ -134,21 +134,47 @@ func filterPublishedByView(items []monitoring.PublishedNewsEvent, viewID string)
 }
 
 func matchesView(item monitoring.PublishedNewsEvent, viewID string) bool {
-	/*switch viewID {
+	switch viewID {
 	case "turkey-critical":
-		return item.Category == "GENERAL" && item.Virality >= 0
+		switch item.Category {
+		case "BREAKING":
+			return item.Virality >= 35
+		case "GENERAL":
+			return item.Virality >= 25
+		case "ECONOMY":
+			return item.Virality >= 24
+		default:
+			return false
+		}
 
 	case "global-high-impact":
-		return (item.Category == "BREAKING" || item.Category == "GENERAL") && item.Virality >= 0
+		switch item.Category {
+		case "BREAKING":
+			return item.Virality >= 38
+		case "GENERAL":
+			return item.Virality >= 35
+		case "ECONOMY":
+			return item.Virality >= 30
+		default:
+			return false
+		}
 
 	case "economy-markets":
-		return item.Category == "ECONOMY" || (item.Category == "GENERAL" && item.Virality >= 0)
+		switch item.Category {
+		case "ECONOMY":
+			return true
+		case "BREAKING":
+			return item.Virality >= 40
+		case "GENERAL":
+			return item.Virality >= 38
+		default:
+			return false
+		}
 
 	case "tech-watch":
 		return item.Category == "TECH"
 
 	default:
 		return true
-	}*/
-	return true
-} // şimdilik panele virality fakretmksizin herhaberin gitmesi için virality fitreleemsi kaldırıldı
+	}
+}
