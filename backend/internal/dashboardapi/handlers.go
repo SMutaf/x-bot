@@ -134,20 +134,21 @@ func filterPublishedByView(items []monitoring.PublishedNewsEvent, viewID string)
 }
 
 func matchesView(item monitoring.PublishedNewsEvent, viewID string) bool {
-	switch viewID {
+	/*switch viewID {
 	case "turkey-critical":
-		return item.Category == "GENERAL" && item.Virality >= 30
+		return item.Category == "GENERAL" && item.Virality >= 0
 
 	case "global-high-impact":
-		return (item.Category == "BREAKING" || item.Category == "GENERAL") && item.Virality >= 35
+		return (item.Category == "BREAKING" || item.Category == "GENERAL") && item.Virality >= 0
 
 	case "economy-markets":
-		return item.Category == "ECONOMY" || (item.Category == "GENERAL" && item.Virality >= 40)
+		return item.Category == "ECONOMY" || (item.Category == "GENERAL" && item.Virality >= 0)
 
 	case "tech-watch":
 		return item.Category == "TECH"
 
 	default:
 		return true
-	}
-}
+	}*/
+	return true
+} // şimdilik panele virality fakretmksizin herhaberin gitmesi için virality fitreleemsi kaldırıldı

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -56,14 +55,21 @@ func main() {
 		telegramRenderer,
 	)
 
-	breakingChannel := make(chan models.NewsEnvelope, 100)
-	normalChannel := make(chan models.NewsEnvelope, 200)
+	// Her kategori için ayrı kanal — buffer boyutları kategori karakteristiğine göre ayarlandı.
+	// Breaking: 2dk polling, 30dk TTL → küçük buffer yeterli.
+	// Economy/General: 3-5dk polling, orta buffer.
+	// Tech: 10dk polling, 8 saat MaxAge → büyük buffer.
+	channels := pipeline.CategoryChannels{
+		Breaking: make(chan models.NewsEnvelope, 50),
+		Economy:  make(chan models.NewsEnvelope, 100),
+		General:  make(chan models.NewsEnvelope, 100),
+		Tech:     make(chan models.NewsEnvelope, 150),
+	}
 
 	newsFilter := filter.NewNewsFilter()
 	sc := scraper.NewRSSScraper(
 		cache,
-		breakingChannel,
-		normalChannel,
+		channels,
 		cfg.MaxNewsPerSource,
 		newsFilter,
 		clusterer,
@@ -71,6 +77,7 @@ func main() {
 		monitor,
 	)
 
+	// Dashboard API
 	go func() {
 		mux := http.NewServeMux()
 		api := dashboardapi.NewHandler(monitor, healthManager)
@@ -85,8 +92,7 @@ func main() {
 		}
 	}()
 
-	limiter := rate.NewLimiter(rate.Every(3*time.Second), 1)
-
+	// Source health snapshot — her 2 dakikada bir loglanır.
 	go func() {
 		ticker := time.NewTicker(2 * time.Minute)
 		defer ticker.Stop()
@@ -97,57 +103,13 @@ func main() {
 		}
 	}()
 
-	go func() {
-		breakingStreak := 0
-		const maxBreakingStreak = 3
+	// Dispatcher: Tiered Priority + Starvation Protection
+	// Tek rate limiter tüm kategoriler için ortaktır — Telegram rate limit korunur.
+	limiter := rate.NewLimiter(rate.Every(3*time.Second), 1)
+	dispatcher := pipeline.NewDispatcher(channels, processor, limiter)
+	go dispatcher.Run()
 
-		for {
-			if breakingStreak >= maxBreakingStreak {
-				select {
-				case item := <-normalChannel:
-					fmt.Println("[DENGE] Normal kanala geçiliyor...")
-					_ = limiter.Wait(context.Background())
-					middleware.RecoveryWrapper("Normal News Worker", func() {
-						if err := processor.Process(item); err != nil {
-							fmt.Printf("[PROCESS HATA] Normal News Worker: %v (haber: %s)\n", err, item.News.Title)
-						}
-					})
-					breakingStreak = 0
-					continue
-				default:
-					fmt.Println("[DENGE] Normal kanalda haber yok, breaking'e dönülüyor.")
-					breakingStreak = 0
-				}
-			}
-
-			select {
-			case item := <-breakingChannel:
-				_ = limiter.Wait(context.Background())
-				middleware.RecoveryWrapper("Breaking News Worker", func() {
-					if err := processor.Process(item); err != nil {
-						fmt.Printf("[PROCESS HATA] Breaking News Worker: %v (haber: %s)\n", err, item.News.Title)
-					}
-				})
-				breakingStreak++
-				fmt.Printf("Breaking streak: %d/%d\n", breakingStreak, maxBreakingStreak)
-
-			case item := <-normalChannel:
-				_ = limiter.Wait(context.Background())
-				middleware.RecoveryWrapper("Normal News Worker", func() {
-					if err := processor.Process(item); err != nil {
-						fmt.Printf("[PROCESS HATA] Normal News Worker: %v (haber: %s)\n", err, item.News.Title)
-					}
-				})
-				breakingStreak = 0
-
-			case <-time.After(100 * time.Millisecond):
-				continue
-			}
-		}
-	}()
-
-	fmt.Println("Priority Worker Başlatıldı! (Breaking 3:1 Normal oranında)")
-
+	// RSS kaynaklarını başlat — her kaynak kendi goroutine'inde döner.
 	for _, source := range cfg.RSSSources {
 		src := source
 		go func() {

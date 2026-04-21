@@ -95,54 +95,55 @@ func sendEvent(w http.ResponseWriter, flusher http.Flusher, eventName string, pa
 
 // matchesView — hangi haberin hangi view'da görüneceğini belirler.
 func matchesView(item PublishedItem, viewID string) bool {
-	switch viewID {
+	/*	switch viewID {
 
-	case "turkey-critical":
-		// Türkiye'yi etkileyen her kategoriden önemli haber
-		// BREAKING: tüm kritik breaking haberler
-		// GENERAL: Türkiye'ye doğrudan dokunan haberler
-		// ECONOMY: Türkiye ekonomisini etkileyen haberler
-		switch item.Category {
-		case "BREAKING":
-			return item.Virality >= 35
-		case "GENERAL":
-			return item.Virality >= 25
-		case "ECONOMY":
-			return item.Virality >= 24
+		case "turkey-critical":
+			// Türkiye'yi etkileyen her kategoriden önemli haber
+			// BREAKING: tüm kritik breaking haberler
+			// GENERAL: Türkiye'ye doğrudan dokunan haberler
+			// ECONOMY: Türkiye ekonomisini etkileyen haberler
+			switch item.Category {
+			case "BREAKING":
+				return item.Virality >= 35
+			case "GENERAL":
+				return item.Virality >= 25
+			case "ECONOMY":
+				return item.Virality >= 24
+			default:
+				return false
+			}
+
+		case "global-high-impact":
+			// Küresel ölçekte yüksek etkili haberler
+			switch item.Category {
+			case "BREAKING":
+				return item.Virality >= 38
+			case "GENERAL":
+				return item.Virality >= 35
+			case "ECONOMY":
+				return item.Virality >= 30
+			default:
+				return false
+			}
+
+		case "economy-markets":
+			// Ekonomi ve piyasa haberleri
+			switch item.Category {
+			case "ECONOMY":
+				return true // tüm economy haberleri
+			case "BREAKING":
+				return item.Virality >= 40 // çok güçlü breaking ekonomi etkili haberler
+			case "GENERAL":
+				return item.Virality >= 38
+			default:
+				return false
+			}
+
+		case "tech-watch":
+			return item.Category == "TECH"
+
 		default:
-			return false
-		}
-
-	case "global-high-impact":
-		// Küresel ölçekte yüksek etkili haberler
-		switch item.Category {
-		case "BREAKING":
-			return item.Virality >= 38
-		case "GENERAL":
-			return item.Virality >= 35
-		case "ECONOMY":
-			return item.Virality >= 30
-		default:
-			return false
-		}
-
-	case "economy-markets":
-		// Ekonomi ve piyasa haberleri
-		switch item.Category {
-		case "ECONOMY":
-			return true // tüm economy haberleri
-		case "BREAKING":
-			return item.Virality >= 40 // çok güçlü breaking ekonomi etkili haberler
-		case "GENERAL":
-			return item.Virality >= 38
-		default:
-			return false
-		}
-
-	case "tech-watch":
-		return item.Category == "TECH"
-
-	default:
-		return true
-	}
+			return true
+		}*/
+	return true
 }

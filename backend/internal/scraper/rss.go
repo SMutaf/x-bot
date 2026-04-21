@@ -14,6 +14,7 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/filter"
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
 	"github.com/SMutaf/twitter-bot/backend/internal/monitoring"
+	"github.com/SMutaf/twitter-bot/backend/internal/pipeline"
 	"github.com/SMutaf/twitter-bot/backend/internal/policy"
 	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
 	"github.com/mmcdole/gofeed"
@@ -35,21 +36,19 @@ func (t *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 type RSSScraper struct {
-	Parser          *gofeed.Parser
-	Cache           *dedup.Deduplicator
-	BreakingChannel chan<- models.NewsEnvelope
-	NormalChannel   chan<- models.NewsEnvelope
-	MaxPerSource    int
-	Filter          *filter.NewsFilter
-	Clusterer       *eventcluster.EventClusterer
-	HealthManager   *sourcehealth.Manager
-	Monitoring      *monitoring.Manager
+	Parser        *gofeed.Parser
+	Cache         *dedup.Deduplicator
+	Channels      pipeline.CategoryChannels // ← BreakingChannel + NormalChannel yerine
+	MaxPerSource  int
+	Filter        *filter.NewsFilter
+	Clusterer     *eventcluster.EventClusterer
+	HealthManager *sourcehealth.Manager
+	Monitoring    *monitoring.Manager
 }
 
 func NewRSSScraper(
 	cache *dedup.Deduplicator,
-	breakingCh chan<- models.NewsEnvelope,
-	normalCh chan<- models.NewsEnvelope,
+	channels pipeline.CategoryChannels, // ← iki ayrı kanal yerine tek struct
 	maxPerSource int,
 	f *filter.NewsFilter,
 	ec *eventcluster.EventClusterer,
@@ -65,15 +64,42 @@ func NewRSSScraper(
 	}
 
 	return &RSSScraper{
-		Parser:          parser,
-		Cache:           cache,
-		BreakingChannel: breakingCh,
-		NormalChannel:   normalCh,
-		MaxPerSource:    maxPerSource,
-		Filter:          f,
-		Clusterer:       ec,
-		HealthManager:   healthManager,
-		Monitoring:      monitor,
+		Parser:        parser,
+		Cache:         cache,
+		Channels:      channels,
+		MaxPerSource:  maxPerSource,
+		Filter:        f,
+		Clusterer:     ec,
+		HealthManager: healthManager,
+		Monitoring:    monitor,
+	}
+}
+
+// routeToChannel haberi kategorisine göre doğru kanala yönlendirir.
+func (s *RSSScraper) routeToChannel(env models.NewsEnvelope, itemTitle string, count int) bool {
+	var ch chan<- models.NewsEnvelope
+	cat := string(env.News.Category)
+
+	switch env.News.Category {
+	case models.CategoryBreaking:
+		ch = s.Channels.Breaking
+	case models.CategoryEconomy:
+		ch = s.Channels.Economy
+	case models.CategoryTech:
+		ch = s.Channels.Tech
+	default: // GENERAL ve tanımsız kategoriler
+		ch = s.Channels.General
+		cat = "GENERAL"
+	}
+
+	select {
+	case ch <- env:
+		fmt.Printf("[%s] Kanala eklendi [%d/%d]: %s\n", cat, count+1, s.MaxPerSource, itemTitle)
+		return true
+	default:
+		fmt.Printf("[%s] Channel dolu, atlandı: %s\n", cat, itemTitle)
+		s.recordRejected(env, strings.ToLower(cat)+"-channel-full")
+		return false
 	}
 }
 
@@ -219,24 +245,8 @@ func (s *RSSScraper) Fetch(source config.RSSSource) {
 
 		fmt.Printf("[FİLTRE] Geçti (%s, %d kaynak): %s\n", reason, sourceCount, item.Title)
 
-		if source.Category == models.CategoryBreaking {
-			select {
-			case s.BreakingChannel <- env:
-				fmt.Printf("[BREAKING] Kanala eklendi [%d/%d]: %s\n", count+1, s.MaxPerSource, item.Title)
-				count++
-			default:
-				fmt.Println("[BREAKING] Channel dolu, atlandı:", item.Title)
-				s.recordRejected(env, "breaking-channel-full")
-			}
-		} else {
-			select {
-			case s.NormalChannel <- env:
-				fmt.Printf("[%s] Kanala eklendi [%d/%d]: %s\n", source.Category, count+1, s.MaxPerSource, item.Title)
-				count++
-			default:
-				fmt.Println("[NORMAL] Channel dolu, atlandı:", item.Title)
-				s.recordRejected(env, "normal-channel-full")
-			}
+		if s.routeToChannel(env, item.Title, count) {
+			count++
 		}
 	}
 }
@@ -269,7 +279,6 @@ func (s *RSSScraper) fetchWithRetry(source config.RSSSource) (*gofeed.Feed, erro
 			err,
 		)
 
-		// HTTP 404 veya 403 → retry'a gerek yok, kaynak kalıcı hatalı
 		if errType == "HTTP_404" || errType == "HTTP_403" {
 			fmt.Printf("[RSS SKIP RETRY] Kalıcı HTTP hatası (%s), retry atlanıyor: %s\n", errType, source.URL)
 			break
@@ -316,8 +325,6 @@ func (s *RSSScraper) recordHealthEvent(status sourcehealth.Status, state string)
 	})
 }
 
-// classifyRSSError — hata türünü HTTP status code dahil sınıflandırır.
-// Önceden HTTP hatalar "OTHER" olarak geliyordu, artık HTTP_404/403 ayrı çıkıyor.
 func classifyRSSError(err error) string {
 	msg := strings.ToLower(err.Error())
 
@@ -345,10 +352,8 @@ func classifyRSSError(err error) string {
 	}
 }
 
-// feedSourceName — URL'den okunabilir kaynak adı döndürür.
 func feedSourceName(url string) string {
 	switch {
-	// Türk kaynakları
 	case strings.Contains(url, "trthaber.com"):
 		return "TRT Haber"
 	case strings.Contains(url, "bloomberght.com"):
@@ -365,7 +370,6 @@ func feedSourceName(url string) string {
 		return "Cumhuriyet"
 	case strings.Contains(url, "haberturk.com"):
 		return "Habertürk"
-	// Küresel kaynaklar
 	case strings.Contains(url, "bbci.co.uk"):
 		return "BBC"
 	case strings.Contains(url, "nytimes.com"):
