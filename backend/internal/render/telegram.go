@@ -29,7 +29,7 @@ func (r *TelegramRenderer) Render(env models.NewsEnvelope, decision models.Edito
 		parts = append(parts, summary)
 	}
 	if importance != "" {
-		parts = append(parts, fmt.Sprintf("_Neden önemli:_ %s", importance))
+		parts = append(parts, fmt.Sprintf("Önem: %s", importance))
 	}
 	if sourceLine != "" {
 		parts = append(parts, sourceLine)

@@ -83,7 +83,7 @@ func (b *ApprovalBot) RequestApproval(message, category, publishedTime string) e
 		return err
 	}
 
-	fmt.Printf("✅ Telegram'a gönderildi: %s\n", message[:min(50, len(message))])
+	fmt.Printf("Telegram'a gönderildi: %s\n", message[:min(50, len(message))])
 	return nil
 }
 
