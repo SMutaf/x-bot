@@ -21,6 +21,7 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
 	"github.com/SMutaf/twitter-bot/backend/internal/stream"
 	"github.com/SMutaf/twitter-bot/backend/internal/telegram"
+	"github.com/SMutaf/twitter-bot/backend/internal/translation"
 	"golang.org/x/time/rate"
 )
 
@@ -45,6 +46,7 @@ func main() {
 	aiClient := ai.NewClient("http://localhost:8000")
 	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
 	telegramRenderer := render.NewTelegramRenderer()
+	translator := translation.NewLibreTranslator("http://localhost:5000")
 
 	processor := pipeline.NewProcessor(
 		newsScorer,
@@ -53,6 +55,7 @@ func main() {
 		clusterer,
 		monitor,
 		telegramRenderer,
+		translator,
 	)
 
 	// Her kategori için ayrı kanal — buffer boyutları kategori karakteristiğine göre ayarlandı.

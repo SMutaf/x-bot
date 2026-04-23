@@ -13,16 +13,18 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/render"
 	"github.com/SMutaf/twitter-bot/backend/internal/scoring"
 	"github.com/SMutaf/twitter-bot/backend/internal/telegram"
+	"github.com/SMutaf/twitter-bot/backend/internal/translation"
 )
 
 type Processor struct {
-	scorer   *scoring.NewsScorer
-	ai       *ai.Client
-	telegram *telegram.ApprovalBot
-	cluster  *eventcluster.EventClusterer
-	monitor  *monitoring.Manager
-	renderer *render.TelegramRenderer
-	istLoc   *time.Location
+	scorer     *scoring.NewsScorer
+	ai         *ai.Client
+	telegram   *telegram.ApprovalBot
+	cluster    *eventcluster.EventClusterer
+	monitor    *monitoring.Manager
+	renderer   *render.TelegramRenderer
+	translator *translation.LibreTranslator
+	istLoc     *time.Location
 }
 
 func NewProcessor(
@@ -32,16 +34,18 @@ func NewProcessor(
 	clusterer *eventcluster.EventClusterer,
 	monitor *monitoring.Manager,
 	renderer *render.TelegramRenderer,
+	translator *translation.LibreTranslator,
 ) *Processor {
 	loc, _ := time.LoadLocation("Europe/Istanbul")
 	return &Processor{
-		scorer:   scorer,
-		ai:       aiClient,
-		telegram: tgBot,
-		cluster:  clusterer,
-		monitor:  monitor,
-		renderer: renderer,
-		istLoc:   loc,
+		scorer:     scorer,
+		ai:         aiClient,
+		telegram:   tgBot,
+		cluster:    clusterer,
+		monitor:    monitor,
+		renderer:   renderer,
+		translator: translator,
+		istLoc:     loc,
 	}
 }
 
@@ -140,6 +144,11 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 		fmt.Printf("Telegram Hatası: %v\n", err)
 		p.recordRejected(env, "telegram-error")
 		return err
+	}
+
+	translatedDesc, err := p.translator.Translate(env.News.Description, "en", "tr")
+	if err == nil {
+		env.News.Description = translatedDesc
 	}
 
 	p.monitor.RecordPublished(monitoring.PublishedNewsEvent{
