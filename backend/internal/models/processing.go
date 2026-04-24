@@ -18,12 +18,14 @@ type FilterDecision struct {
 }
 
 type ScoreBreakdown struct {
-	Cluster float64
-	Recency float64
-	Burst   float64
-	Keyword float64
-	Final   int
-	Boost   int
+	Cluster   float64
+	Recency   float64
+	Burst     float64
+	Keyword   float64
+	Turkey    float64
+	Magnitude float64
+	Final     int
+	Boost     int
 }
 
 type ClusterInfo struct {

@@ -21,37 +21,42 @@ func (s *NewsScorer) Calculate(env models.NewsEnvelope) models.ScoreBreakdown {
 	cScore := ClusterScore(env.Cluster.ClusterCount)
 	rScore := RecencyScore(env.News.PublishedAt)
 	bScore := s.burstProvider.Score(env)
-	kScore := KeywordScore(env.News.Title + " " + env.News.Description)
+	text := env.News.Title + " " + env.News.Description
+	kScore := KeywordScore(text)
+	tScore := TurkeyRelevanceScore(text)
+	mScore := MagnitudeScore(text)
 
 	var raw float64
 
 	switch env.News.Category {
 	case models.CategoryBreaking:
-		raw = (cScore * 0.58) + (rScore * 0.24) + (bScore * 0.12) + (kScore * 0.06)
+		raw = (cScore * 0.48) + (rScore * 0.20) + (bScore * 0.12) + (kScore * 0.12) + (tScore * 0.04) + (mScore * 0.04)
 	case models.CategoryGeneral:
-		raw = (cScore * 0.10) + (rScore * 0.42) + (bScore * 0.03) + (kScore * 0.45)
+		raw = (cScore * 0.08) + (rScore * 0.30) + (bScore * 0.05) + (kScore * 0.32) + (tScore * 0.18) + (mScore * 0.07)
 	case models.CategoryEconomy:
-		raw = (cScore * 0.08) + (rScore * 0.38) + (bScore * 0.00) + (kScore * 0.54)
+		raw = (cScore * 0.06) + (rScore * 0.22) + (bScore * 0.08) + (kScore * 0.34) + (tScore * 0.20) + (mScore * 0.10)
 	case models.CategoryTech:
-		raw = (cScore * 0.10) + (rScore * 0.30) + (bScore * 0.00) + (kScore * 0.60)
+		raw = (cScore * 0.08) + (rScore * 0.22) + (bScore * 0.07) + (kScore * 0.43) + (tScore * 0.08) + (mScore * 0.12)
 	default:
-		raw = (cScore * 0.20) + (rScore * 0.35) + (bScore * 0.05) + (kScore * 0.40)
+		raw = (cScore * 0.16) + (rScore * 0.28) + (bScore * 0.06) + (kScore * 0.34) + (tScore * 0.10) + (mScore * 0.06)
 	}
 
 	final := clampScore(raw)
 
 	fmt.Printf(
-		"[VIRALITY DETAIL] cluster:%.0f recency:%.0f burst:%.0f keyword:%.0f => %d | %s\n",
-		cScore, rScore, bScore, kScore, final, env.News.Title,
+		"[VIRALITY DETAIL] cluster:%.0f recency:%.0f burst:%.0f keyword:%.0f turkey:%.0f magnitude:%.0f => %d | %s\n",
+		cScore, rScore, bScore, kScore, tScore, mScore, final, env.News.Title,
 	)
 
 	return models.ScoreBreakdown{
-		Cluster: cScore,
-		Recency: rScore,
-		Burst:   bScore,
-		Keyword: kScore,
-		Final:   final,
-		Boost:   0,
+		Cluster:   cScore,
+		Recency:   rScore,
+		Burst:     bScore,
+		Keyword:   kScore,
+		Turkey:    tScore,
+		Magnitude: mScore,
+		Final:     final,
+		Boost:     0,
 	}
 }
 

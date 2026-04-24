@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/SMutaf/twitter-bot/backend/internal/models"
@@ -27,11 +28,11 @@ func (b *BurstProvider) Score(env models.NewsEnvelope) float64 {
 		return 0
 	}
 
-	if env.News.Category != models.CategoryBreaking && env.News.Category != models.CategoryGeneral {
+	if !b.shouldTrackBurst(env) {
 		return 0
 	}
 
-	if env.Cluster.ClusterCount < 2 {
+	if requiresClusterGate(env.News.Category) && env.Cluster.ClusterCount < 2 {
 		return 0
 	}
 
@@ -86,4 +87,39 @@ func (b *BurstProvider) Score(env models.NewsEnvelope) float64 {
 	default:
 		return 0
 	}
+}
+
+func (b *BurstProvider) shouldTrackBurst(env models.NewsEnvelope) bool {
+	switch env.News.Category {
+	case models.CategoryBreaking, models.CategoryGeneral:
+		return true
+	case models.CategoryEconomy, models.CategoryTech:
+		return hasBurstTrigger(env.News.Title + " " + env.News.Description)
+	default:
+		return false
+	}
+}
+
+func requiresClusterGate(category models.NewsCategory) bool {
+	return category == models.CategoryBreaking || category == models.CategoryGeneral
+}
+
+func hasBurstTrigger(text string) bool {
+	lower := strings.ToLower(text)
+
+	triggers := []string{
+		"flash crash", "market crash", "rate hike", "rate cut", "faiz kararı", "faiz karari",
+		"tcmb", "fed", "bankruptcy", "iflas", "sanctions", "yaptırım", "yaptirim",
+		"mass layoff", "lay off", "acquisition", "merger", "breach", "hack",
+		"openai", "meta", "microsoft", "apple", "google", "tesla", "nvidia",
+		"trump", "putin", "nato", "israel", "iran", "gaza", "gazze",
+	}
+
+	for _, trigger := range triggers {
+		if strings.Contains(lower, trigger) {
+			return true
+		}
+	}
+
+	return false
 }
