@@ -1,6 +1,13 @@
 import { APP_NAME } from "../../app/config";
 
-export default function TopBar() {
+type TopBarProps = {
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+};
+
+export default function TopBar(props: TopBarProps) {
+  const { searchQuery, onSearchChange } = props;
+
   return (
     <header className="topbar">
       <div className="topbar__brand">{APP_NAME}</div>
@@ -10,10 +17,10 @@ export default function TopBar() {
           className="topbar__search"
           type="text"
           placeholder="Ara..."
-          disabled
+          value={searchQuery}
+          onChange={(event) => onSearchChange(event.target.value)}
         />
       </div>
-    
     </header>
   );
 }

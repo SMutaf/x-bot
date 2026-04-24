@@ -4,42 +4,60 @@ import { useFeedStream } from "../../hooks/useFeedStream";
 
 type MainStreamProps = {
   activeViewId: string;
+  searchQuery: string;
   selectedItem: FeedItem | null;
   onSelectItem: (item: FeedItem) => void;
 };
 
 export default function MainStream(props: MainStreamProps) {
-  const { activeViewId, selectedItem, onSelectItem } = props;
+  const { activeViewId, searchQuery, selectedItem, onSelectItem } = props;
   const { connection, latestEventName, latestRawData, items, isInitialLoading } =
     useFeedStream(activeViewId);
-  const getCardTitle = (item: FeedItem) => item.hook || item.title;
-  const getCardDescription = (item: FeedItem) => item.summary || item.description || "";
+  const normalizedQuery = normalizeSearchText(searchQuery);
+  const filteredItems = normalizedQuery
+    ? items.filter((item) => matchesSearch(item, normalizedQuery))
+    : items;
 
   useEffect(() => {
-    if (!selectedItem && items.length > 0) {
-      onSelectItem(items[0]);
+    if (filteredItems.length === 0) {
+      return;
     }
-  }, [items, selectedItem, onSelectItem]);
+
+    if (!selectedItem) {
+      onSelectItem(filteredItems[0]);
+      return;
+    }
+
+    const selectedStillVisible = filteredItems.some(
+      (item) =>
+        selectedItem.link === item.link ||
+        (selectedItem.title === item.title && selectedItem.time === item.time)
+    );
+
+    if (!selectedStillVisible) {
+      onSelectItem(filteredItems[0]);
+    }
+  }, [filteredItems, selectedItem, onSelectItem]);
 
   return (
     <main className="main-stream">
       <div className="main-stream__header">
         <div>
-          <h1 className="main-stream__title">Canlı Akış</h1>
-          <p className="main-stream__subtitle">Aktif görünüm: {activeViewId}</p>
+          <h1 className="main-stream__title">Canli Akis</h1>
+          <p className="main-stream__subtitle">Aktif gorunum: {activeViewId}</p>
         </div>
 
         <div className="live-status">
           <span
             className={`live-dot ${connection.isConnected ? "live-dot--ok" : "live-dot--off"}`}
           />
-          <span>{connection.isConnected ? "Bağlı" : "Bağlantı Yok"}</span>
+          <span>{connection.isConnected ? "Bagli" : "Baglanti Yok"}</span>
         </div>
       </div>
 
       <section className="stream-debug-card">
         <div className="stream-debug-row">
-          <strong>Son event:</strong> {latestEventName ?? "Henüz event yok"}
+          <strong>Son event:</strong> {latestEventName ?? "Henuz event yok"}
         </div>
         <div className="stream-debug-row">
           <strong>Son zaman:</strong> {connection.lastEventAt ?? "-"}
@@ -50,7 +68,7 @@ export default function MainStream(props: MainStreamProps) {
       </section>
 
       <section className="stream-preview">
-        <div className="panel-title">Ham Event Önizleme</div>
+        <div className="panel-title">Ham Event Onizleme</div>
         <pre className="code-block">{latestRawData ?? "Yeni event bekleniyor..."}</pre>
       </section>
 
@@ -58,19 +76,23 @@ export default function MainStream(props: MainStreamProps) {
         <div className="panel-title">Feed Listesi</div>
 
         {isInitialLoading ? (
-          <p>İlk veri yükleniyor...</p>
+          <p>Ilk veri yukleniyor...</p>
         ) : items.length === 0 ? (
-          <p>Bu görünüm için henüz kayıt yok.</p>
+          <p>Bu gorunum icin henuz kayit yok.</p>
+        ) : filteredItems.length === 0 ? (
+          <p>Bu arama icin eslesen kayit yok.</p>
         ) : (
           <div className="feed-list">
-            {items.map((item) => {
+            {filteredItems.map((item) => {
               const key = item.link || `${item.title}-${item.time}`;
               const isSelected =
                 !!selectedItem &&
                 (selectedItem.link === item.link ||
                   (selectedItem.title === item.title && selectedItem.time === item.time));
-              const cardTitle = getCardTitle(item);
-              const cardDescription = getCardDescription(item);
+              const cardTitle = item.hook || item.title;
+              const cardDescription = item.summary || item.description || "";
+              const categoryTone = getCategoryTone(item.category);
+              const hasTurkeyImpact = getTurkeyImpact(item);
 
               return (
                 <article
@@ -87,8 +109,13 @@ export default function MainStream(props: MainStreamProps) {
                   }}
                 >
                   <div className="feed-card__meta">
-                    <span>{item.category}</span>
-                    <span>•</span>
+                    <span className={`feed-card__badge feed-card__badge--${categoryTone}`}>
+                      {item.category}
+                    </span>
+                    {hasTurkeyImpact ? (
+                      <span className="feed-card__badge feed-card__badge--turkey">TR Focus</span>
+                    ) : null}
+                    <span>&bull;</span>
                     <span>{item.source}</span>
                   </div>
 
@@ -111,7 +138,7 @@ export default function MainStream(props: MainStreamProps) {
                     rel="noreferrer"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    Haberi aç
+                    Haberi ac
                   </a>
                 </article>
               );
@@ -121,4 +148,144 @@ export default function MainStream(props: MainStreamProps) {
       </section>
     </main>
   );
+}
+
+function getCategoryTone(category: string) {
+  switch (category?.toUpperCase()) {
+    case "BREAKING":
+      return "breaking";
+    case "TECH":
+      return "tech";
+    case "ECONOMY":
+      return "economy";
+    case "GENERAL":
+      return "general";
+    default:
+      return "general";
+  }
+}
+
+function getTurkeyImpact(item: FeedItem) {
+  const text = normalizeSearchText(
+    `${item.title} ${item.description ?? ""} ${item.summary ?? ""} ${item.importance ?? ""} ${item.source}`
+  );
+
+  const signals = [
+    "turkiye",
+    "turkey",
+    "ankara",
+    "istanbul",
+    "izmir",
+    "tbmm",
+    "tcmb",
+    "bist",
+    "borsa istanbul",
+    "lira",
+    "try",
+    "erdogan",
+    "cumhurbaskani"
+  ];
+
+  return signals.some((signal) => text.includes(signal));
+}
+
+function matchesSearch(item: FeedItem, query: string) {
+  const haystack = normalizeSearchText(
+    [
+      item.title,
+      item.hook,
+      item.summary,
+      item.description,
+      item.source,
+      item.category,
+      item.importance,
+      item.sentiment
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  if (haystack.includes(query)) {
+    return true;
+  }
+
+  const queryTokens = tokenizeSearch(query);
+  if (queryTokens.length === 0) {
+    return true;
+  }
+
+  const textTokens = tokenizeSearch(haystack);
+  if (textTokens.length === 0) {
+    return false;
+  }
+
+  return queryTokens.every((queryToken) =>
+    textTokens.some((textToken) => isLooseMatch(queryToken, textToken))
+  );
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLocaleLowerCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/['’`]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeSearch(value: string) {
+  return value
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
+
+function isLooseMatch(queryToken: string, textToken: string) {
+  if (textToken.includes(queryToken) || queryToken.includes(textToken)) {
+    return true;
+  }
+
+  if (textToken.startsWith(queryToken) || queryToken.startsWith(textToken)) {
+    return true;
+  }
+
+  if (Math.abs(queryToken.length - textToken.length) > 2) {
+    return false;
+  }
+
+  const distance = levenshtein(queryToken, textToken);
+  if (queryToken.length <= 4) {
+    return distance <= 1;
+  }
+
+  return distance <= 2;
+}
+
+function levenshtein(a: string, b: string) {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const dp = Array.from({ length: rows }, () => Array(cols).fill(0));
+
+  for (let i = 0; i < rows; i += 1) {
+    dp[i][0] = i;
+  }
+
+  for (let j = 0; j < cols; j += 1) {
+    dp[0][j] = j;
+  }
+
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return dp[rows - 1][cols - 1];
 }

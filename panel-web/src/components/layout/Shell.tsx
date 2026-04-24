@@ -9,18 +9,21 @@ import RightDetailPane from "./RightDetailPane";
 export default function Shell() {
   const [activeViewId, setActiveViewId] = useState<string>(env.defaultView);
   const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   useEffect(() => {
     setSelectedItem(null);
+    setSearchQuery("");
   }, [activeViewId]);
 
   return (
     <div className="app-shell">
-      <TopBar />
+      <TopBar searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       <div className="app-body">
         <LeftRail activeViewId={activeViewId} onChangeView={setActiveViewId} />
         <MainStream
           activeViewId={activeViewId}
+          searchQuery={searchQuery}
           selectedItem={selectedItem}
           onSelectItem={setSelectedItem}
         />
