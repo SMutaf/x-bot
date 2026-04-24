@@ -9,14 +9,14 @@ import (
 	"time"
 
 	"github.com/SMutaf/twitter-bot/backend/config"
-	"github.com/SMutaf/twitter-bot/backend/internal/dedup"
-	"github.com/SMutaf/twitter-bot/backend/internal/eventcluster"
-	"github.com/SMutaf/twitter-bot/backend/internal/filter"
-	"github.com/SMutaf/twitter-bot/backend/internal/models"
-	"github.com/SMutaf/twitter-bot/backend/internal/monitoring"
-	"github.com/SMutaf/twitter-bot/backend/internal/pipeline"
-	"github.com/SMutaf/twitter-bot/backend/internal/policy"
-	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
+	"github.com/SMutaf/twitter-bot/backend/internal/domain/models"
+	"github.com/SMutaf/twitter-bot/backend/internal/infra/monitoring"
+	"github.com/SMutaf/twitter-bot/backend/internal/ingestion/dedup"
+	"github.com/SMutaf/twitter-bot/backend/internal/ingestion/filter"
+	"github.com/SMutaf/twitter-bot/backend/internal/ingestion/sourcehealth"
+	"github.com/SMutaf/twitter-bot/backend/internal/processing/cluster"
+	"github.com/SMutaf/twitter-bot/backend/internal/processing/pipeline"
+	"github.com/SMutaf/twitter-bot/backend/internal/processing/policy"
 	"github.com/mmcdole/gofeed"
 )
 

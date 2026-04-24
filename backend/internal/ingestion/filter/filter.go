@@ -1,6 +1,6 @@
 package filter
 
-import "github.com/SMutaf/twitter-bot/backend/internal/models"
+import "github.com/SMutaf/twitter-bot/backend/internal/domain/models"
 
 type NewsFilter struct{}
 

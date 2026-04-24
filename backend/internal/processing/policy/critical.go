@@ -3,7 +3,7 @@ package policy
 import (
 	"strings"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/models"
+	"github.com/SMutaf/twitter-bot/backend/internal/domain/models"
 )
 
 func IsCriticalEvent(env models.NewsEnvelope, _ CategoryPolicy) bool {

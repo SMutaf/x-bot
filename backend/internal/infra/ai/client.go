@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync/atomic"
 	"strings"
+	"sync/atomic"
 	"time"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/models"
+	"github.com/SMutaf/twitter-bot/backend/internal/domain/models"
 )
 
 type Client struct {

@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/ai"
-	"github.com/SMutaf/twitter-bot/backend/internal/dedup"
+	"github.com/SMutaf/twitter-bot/backend/internal/infra/ai"
+	"github.com/SMutaf/twitter-bot/backend/internal/ingestion/dedup"
 )
 
 const (

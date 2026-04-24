@@ -5,15 +5,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/ai"
-	"github.com/SMutaf/twitter-bot/backend/internal/eventcluster"
-	"github.com/SMutaf/twitter-bot/backend/internal/models"
-	"github.com/SMutaf/twitter-bot/backend/internal/monitoring"
-	"github.com/SMutaf/twitter-bot/backend/internal/policy"
-	"github.com/SMutaf/twitter-bot/backend/internal/render"
-	"github.com/SMutaf/twitter-bot/backend/internal/scoring"
-	"github.com/SMutaf/twitter-bot/backend/internal/telegram"
-	"github.com/SMutaf/twitter-bot/backend/internal/translation"
+	"github.com/SMutaf/twitter-bot/backend/internal/delivery/render"
+	"github.com/SMutaf/twitter-bot/backend/internal/delivery/telegram"
+	"github.com/SMutaf/twitter-bot/backend/internal/delivery/translation"
+	"github.com/SMutaf/twitter-bot/backend/internal/domain/models"
+	"github.com/SMutaf/twitter-bot/backend/internal/infra/ai"
+	"github.com/SMutaf/twitter-bot/backend/internal/infra/monitoring"
+	"github.com/SMutaf/twitter-bot/backend/internal/processing/cluster"
+	"github.com/SMutaf/twitter-bot/backend/internal/processing/policy"
+	"github.com/SMutaf/twitter-bot/backend/internal/processing/scoring"
 )
 
 type Processor struct {

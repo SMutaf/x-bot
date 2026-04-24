@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/dedup"
+	"github.com/SMutaf/twitter-bot/backend/internal/ingestion/dedup"
 	"github.com/redis/go-redis/v9"
 )
 

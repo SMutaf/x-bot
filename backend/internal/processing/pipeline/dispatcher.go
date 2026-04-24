@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/middleware"
-	"github.com/SMutaf/twitter-bot/backend/internal/models"
+	"github.com/SMutaf/twitter-bot/backend/internal/domain/models"
+	"github.com/SMutaf/twitter-bot/backend/internal/infra/middleware"
 	"golang.org/x/time/rate"
 )
 

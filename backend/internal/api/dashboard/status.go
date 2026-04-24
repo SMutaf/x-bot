@@ -3,7 +3,7 @@ package dashboardapi
 import (
 	"time"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/monitoring"
+	"github.com/SMutaf/twitter-bot/backend/internal/infra/monitoring"
 )
 
 type SystemStatus struct {

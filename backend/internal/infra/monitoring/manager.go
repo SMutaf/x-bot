@@ -3,8 +3,8 @@ package monitoring
 import (
 	"time"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/dedup"
-	"github.com/SMutaf/twitter-bot/backend/internal/stream"
+	"github.com/SMutaf/twitter-bot/backend/internal/api/stream"
+	"github.com/SMutaf/twitter-bot/backend/internal/ingestion/dedup"
 )
 
 type Manager struct {

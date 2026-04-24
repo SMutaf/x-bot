@@ -3,7 +3,7 @@ package sourcehealth
 import (
 	"time"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/models"
+	"github.com/SMutaf/twitter-bot/backend/internal/domain/models"
 )
 
 type Status struct {

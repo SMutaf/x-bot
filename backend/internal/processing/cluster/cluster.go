@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/models"
+	"github.com/SMutaf/twitter-bot/backend/internal/domain/models"
 	"github.com/redis/go-redis/v9"
 )
 

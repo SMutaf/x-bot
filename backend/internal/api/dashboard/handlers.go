@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SMutaf/twitter-bot/backend/internal/monitoring"
-	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
+	"github.com/SMutaf/twitter-bot/backend/internal/infra/monitoring"
+	"github.com/SMutaf/twitter-bot/backend/internal/ingestion/sourcehealth"
 )
 
 type Handler struct {
