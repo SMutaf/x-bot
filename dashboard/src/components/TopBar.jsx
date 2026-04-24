@@ -1,20 +1,29 @@
 import { formatDateTime } from "../lib/format.js";
 
 export default function TopBar({ status }) {
+  const redisState = status?.redisState || (status?.redisConnected ? "online" : "offline");
+  const redisValue = redisState === "degraded" ? "Degraded" : status?.redisConnected ? "Online" : "Offline";
+  const redisTone = redisState === "degraded" ? "warn" : status?.redisConnected ? "ok" : "off";
   const pythonState = status?.pythonState || (status?.pythonConnected ? "online" : "offline");
   const pythonValue = pythonState === "busy"
     ? `Busy${status?.pythonInFlight ? ` (${status.pythonInFlight})` : ""}`
+    : pythonState === "degraded"
+      ? "Degraded"
     : pythonState === "online"
       ? "Online"
       : "Offline";
-  const pythonTone = pythonState === "busy" ? "warn" : status?.pythonConnected ? "ok" : "off";
+  const pythonTone = pythonState === "busy" || pythonState === "degraded"
+    ? "warn"
+    : status?.pythonConnected
+      ? "ok"
+      : "off";
 
   const items = [
     { label: "Published", value: status?.publishedCount ?? "-" },
     { label: "Rejected", value: status?.rejectedCount ?? "-" },
     { label: "Healthy RSS", value: status?.healthyRssSources ?? "-" },
     { label: "Unhealthy RSS", value: status?.unhealthyRssSources ?? "-" },
-    { label: "Redis", value: status?.redisConnected ? "Online" : "Offline", tone: status?.redisConnected ? "ok" : "off" },
+    { label: "Redis", value: redisValue, tone: redisTone },
     { label: "Python", value: pythonValue, tone: pythonTone }
   ];
 

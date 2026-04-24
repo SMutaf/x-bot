@@ -17,6 +17,8 @@ const (
 	dateLayout             = "2006-01-02"
 	publishedKeyPrefix     = "dashboard:published"
 	rejectedKeyPrefix      = "dashboard:rejected"
+	publishedCountPrefix   = "dashboard:counts:published"
+	rejectedCountPrefix    = "dashboard:counts:rejected"
 	sourceHealthCurrentKey = "dashboard:source-health:current"
 )
 
@@ -150,6 +152,11 @@ func (s *RedisStore) pushDailyJSON(prefix string, t time.Time, value any) error 
 	pipe := s.client.TxPipeline()
 	pipe.LPush(s.ctx, key, data)
 	pipe.Expire(s.ctx, key, time.Duration(s.retentionDays)*24*time.Hour)
+	if counterPrefix := counterPrefixFor(prefix); counterPrefix != "" {
+		countKey := s.dailyKey(counterPrefix, t)
+		pipe.Incr(s.ctx, countKey)
+		pipe.Expire(s.ctx, countKey, time.Duration(s.retentionDays)*24*time.Hour)
+	}
 	_, err = pipe.Exec(s.ctx)
 	return err
 }
@@ -160,12 +167,12 @@ func (s *RedisStore) countDailyKeys(prefix string) int {
 	}
 
 	total := 0
-	for _, key := range s.dailyKeys(prefix) {
-		n, err := s.client.LLen(s.ctx, key).Result()
+	for _, key := range s.dailyKeys(counterPrefixFor(prefix)) {
+		n, err := s.client.Get(s.ctx, key).Int()
 		if err != nil {
 			continue
 		}
-		total += int(n)
+		total += n
 	}
 	return total
 }
@@ -183,6 +190,17 @@ func (s *RedisStore) dailyKeys(prefix string) []string {
 	}
 
 	return keys
+}
+
+func counterPrefixFor(prefix string) string {
+	switch prefix {
+	case publishedKeyPrefix:
+		return publishedCountPrefix
+	case rejectedKeyPrefix:
+		return rejectedCountPrefix
+	default:
+		return ""
+	}
 }
 
 func readDailyJSON[T any](s *RedisStore, prefix string) ([]T, error) {

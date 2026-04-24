@@ -28,7 +28,7 @@ __pycache__/
 pip-log.txt
 
 # monitoring data
-backend/data/*.jsonl
+backend/data/
 
 # dashboard build artifacts
 dashboard/node_modules/
