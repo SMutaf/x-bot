@@ -1,12 +1,13 @@
 package dashboardapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/SMutaf/twitter-bot/backend/internal/monitoring"
 	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
@@ -60,9 +61,7 @@ func (h *Handler) handleFeedSnapshot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleSummary(w http.ResponseWriter, r *http.Request) {
-	snapshot := h.HealthManager.Snapshot()
-	summary := h.Monitoring.BuildSummary(snapshot)
-	writeJSON(w, summary)
+	writeJSON(w, h.Monitoring.BuildSummary())
 }
 
 func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +104,7 @@ func (h *Handler) handleRejected(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleSources(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, h.HealthManager.Snapshot())
+	writeJSON(w, h.Monitoring.GetCurrentSourceHealth())
 }
 
 func (h *Handler) handleHealthEvents(w http.ResponseWriter, r *http.Request) {
@@ -124,15 +123,18 @@ func (h *Handler) handleHealthEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleDownloadPublished(w http.ResponseWriter, r *http.Request) {
-	serveDownload(w, r, h.Monitoring.PublishedPath(), "published.jsonl")
+	data, err := h.Monitoring.ExportPublishedJSONL()
+	serveJSONLDownload(w, r, "published.jsonl", data, err)
 }
 
 func (h *Handler) handleDownloadRejected(w http.ResponseWriter, r *http.Request) {
-	serveDownload(w, r, h.Monitoring.RejectedPath(), "rejected.jsonl")
+	data, err := h.Monitoring.ExportRejectedJSONL()
+	serveJSONLDownload(w, r, "rejected.jsonl", data, err)
 }
 
 func (h *Handler) handleDownloadSourceHealth(w http.ResponseWriter, r *http.Request) {
-	serveDownload(w, r, h.Monitoring.HealthPath(), "source_health.jsonl")
+	data, err := h.Monitoring.ExportSourceHealthJSONL()
+	serveJSONLDownload(w, r, "source_health.jsonl", data, err)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -140,9 +142,15 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func serveDownload(w http.ResponseWriter, r *http.Request, path string, filename string) {
+func serveJSONLDownload(w http.ResponseWriter, r *http.Request, filename string, data []byte, err error) {
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("Content-Disposition", "attachment; filename="+filename)
-	http.ServeFile(w, r, filepath.Clean(path))
+	http.ServeContent(w, r, filename, time.Time{}, bytes.NewReader(data))
 }
 
 func parseLimit(raw string, fallback int) int {

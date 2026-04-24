@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/SMutaf/twitter-bot/backend/internal/monitoring"
-	"github.com/SMutaf/twitter-bot/backend/internal/sourcehealth"
 )
 
 type SystemStatus struct {
@@ -27,13 +26,11 @@ type SystemStatus struct {
 
 type StatusProvider struct {
 	Monitoring *monitoring.Manager
-	Health     *sourcehealth.Manager
 	Services   *ServiceStatusManager
 }
 
 func (p *StatusProvider) Build() SystemStatus {
-	snapshot := p.Health.Snapshot()
-	summary := p.Monitoring.BuildSummary(snapshot)
+	summary := p.Monitoring.BuildSummary()
 
 	status := SystemStatus{
 		PublishedCount:      summary.PublishedCount,
@@ -41,9 +38,9 @@ func (p *StatusProvider) Build() SystemStatus {
 		HealthyRSSSources:   summary.HealthySources,
 		UnhealthyRSSSources: summary.DegradedSources + summary.DisabledSources,
 		DisabledRSSSources:  summary.DisabledSources,
-		TrackedRSSSources: summary.TrackedSourceSize,
-		LastPublishedAt:   latestPublishedAt(p.Monitoring),
-		LastRejectedAt:    latestRejectedAt(p.Monitoring),
+		TrackedRSSSources:   summary.TrackedSourceSize,
+		LastPublishedAt:     latestPublishedAt(p.Monitoring),
+		LastRejectedAt:      latestRejectedAt(p.Monitoring),
 	}
 
 	if p.Services != nil {

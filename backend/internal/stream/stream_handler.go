@@ -1,29 +1,12 @@
 package stream
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 )
-
-type PublishedItem struct {
-	Time         string `json:"time"`
-	Title        string `json:"title"`
-	Description  string `json:"description"`
-	Hook         string `json:"hook"`
-	Summary      string `json:"summary"`
-	Importance   string `json:"importance"`
-	Sentiment    string `json:"sentiment"`
-	Category     string `json:"category"`
-	Source       string `json:"source"`
-	Link         string `json:"link"`
-	Virality     int    `json:"virality"`
-	ClusterCount int    `json:"clusterCount"`
-}
 
 func StreamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -37,7 +20,8 @@ func StreamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	viewID := strings.TrimSpace(r.URL.Query().Get("view"))
-	filePath := "data/published.jsonl"
+	events := SubscribePublished()
+	defer UnsubscribePublished(events)
 
 	sendEvent(w, flusher, "connected", map[string]any{
 		"status": "ok",
@@ -45,44 +29,22 @@ func StreamHandler(w http.ResponseWriter, r *http.Request) {
 		"time":   time.Now().Format(time.RFC3339),
 	})
 
-	var lastLineCount int
-	lastHeartbeat := time.Now()
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
 
 	for {
 		select {
 		case <-r.Context().Done():
-			fmt.Println("Client disconnected")
 			return
-		default:
-			file, err := os.Open(filePath)
-			if err == nil {
-				scanner := bufio.NewScanner(file)
-				currentLine := 0
-				for scanner.Scan() {
-					currentLine++
-					if currentLine <= lastLineCount {
-						continue
-					}
-					var item PublishedItem
-					if err := json.Unmarshal(scanner.Bytes(), &item); err != nil {
-						continue
-					}
-					if !matchesView(item, viewID) {
-						continue
-					}
-					sendEvent(w, flusher, "news.published", item)
-				}
-				lastLineCount = currentLine
-				_ = file.Close()
+		case item := <-events:
+			if !matchesView(item, viewID) {
+				continue
 			}
-
-			if time.Since(lastHeartbeat) >= 15*time.Second {
-				sendEvent(w, flusher, "heartbeat", map[string]any{
-					"time": time.Now().Format(time.RFC3339),
-				})
-				lastHeartbeat = time.Now()
-			}
-			time.Sleep(2 * time.Second)
+			sendEvent(w, flusher, "news.published", item)
+		case <-heartbeat.C:
+			sendEvent(w, flusher, "heartbeat", map[string]any{
+				"time": time.Now().Format(time.RFC3339),
+			})
 		}
 	}
 }
