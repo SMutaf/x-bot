@@ -87,16 +87,9 @@ export default function MainStream(props: MainStreamProps) {
                 <div className="skeleton skeleton--line" />
                 <div className="skeleton skeleton--line skeleton--line-short" />
                 <div className="feed-card__stats">
-                  <span className="skeleton skeleton--stat" />
+                  <span className="skeleton skeleton--stat skeleton--stat-virality" />
                   <span className="skeleton skeleton--stat" />
                   <span className="skeleton skeleton--stat skeleton--stat-wide" />
-                </div>
-                <div className="virality-block">
-                  <div className="virality-row">
-                    <span className="skeleton skeleton--virality-label" />
-                    <span className="skeleton skeleton--virality-value" />
-                  </div>
-                  <div className="skeleton skeleton--virality-bar" />
                 </div>
                 <span className="skeleton skeleton--link" />
               </article>
@@ -149,23 +142,20 @@ export default function MainStream(props: MainStreamProps) {
                   {cardDescription ? <p>{cardDescription}</p> : null}
 
                   <div className="feed-card__stats">
+                    <span className="feed-card__stat feed-card__stat--virality">
+                      <span className="feed-card__stat-label">Virality</span>
+                      <span className="feed-card__mini-virality" aria-hidden="true">
+                        <span
+                          className="feed-card__mini-virality-fill"
+                          style={{ width: `${getViralityScore(item.virality)}%` }}
+                        />
+                      </span>
+                      <span className="feed-card__stat-value">{formatVirality(item.virality)}</span>
+                    </span>
                     <span>Cluster: {item.clusterCount ?? "-"}</span>
                     <span>
                       Saat: {item.time ? new Date(item.time).toLocaleString("tr-TR") : "-"}
                     </span>
-                  </div>
-
-                  <div className="virality-block">
-                    <div className="virality-row">
-                      <span className="virality-label">Virality</span>
-                      <span className="virality-value">{formatVirality(item.virality)}</span>
-                    </div>
-                    <div className="virality-bar" aria-hidden="true">
-                      <div
-                        className="virality-bar__fill"
-                        style={{ width: `${getViralityScore(item.virality)}%` }}
-                      />
-                    </div>
                   </div>
 
                   <a
