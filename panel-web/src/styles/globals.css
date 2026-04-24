@@ -334,7 +334,48 @@ pre {
   gap: 12px;
   color: #4b5563;
   font-size: 13px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.virality-block {
+  margin-bottom: 12px;
+}
+
+.virality-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.virality-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.virality-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.virality-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.virality-bar__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #60a5fa 0%, #2563eb 55%, #1d4ed8 100%);
+  transition: width 0.2s ease;
 }
 
 .feed-card__link {
@@ -361,6 +402,91 @@ pre {
 .feed-card--selected {
   border-color: #60a5fa;
   background: #eff6ff;
+}
+
+.feed-card--skeleton {
+  cursor: default;
+  pointer-events: none;
+}
+
+.feed-card--skeleton:hover {
+  border-color: #e5e7eb;
+  box-shadow: none;
+}
+
+.skeleton {
+  display: inline-block;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #e5e7eb 0%, #f3f4f6 50%, #e5e7eb 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton--badge {
+  width: 78px;
+  height: 24px;
+  border-radius: 999px;
+}
+
+.skeleton--meta {
+  width: 170px;
+  height: 14px;
+}
+
+.skeleton--title {
+  width: 72%;
+  height: 22px;
+  margin-bottom: 12px;
+}
+
+.skeleton--line {
+  width: 100%;
+  height: 14px;
+  margin-bottom: 10px;
+}
+
+.skeleton--line-short {
+  width: 82%;
+}
+
+.skeleton--stat {
+  width: 84px;
+  height: 14px;
+}
+
+.skeleton--stat-wide {
+  width: 150px;
+}
+
+.skeleton--virality-label {
+  width: 56px;
+  height: 12px;
+}
+
+.skeleton--virality-value {
+  width: 54px;
+  height: 14px;
+}
+
+.skeleton--virality-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.skeleton--link {
+  width: 86px;
+  height: 18px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .detail-card__label {

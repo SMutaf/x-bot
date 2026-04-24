@@ -76,7 +76,32 @@ export default function MainStream(props: MainStreamProps) {
         <div className="panel-title">Feed Listesi</div>
 
         {isInitialLoading ? (
-          <p>Ilk veri yukleniyor...</p>
+          <div className="feed-list">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <article key={index} className="feed-card feed-card--skeleton" aria-hidden="true">
+                <div className="feed-card__meta">
+                  <span className="skeleton skeleton--badge" />
+                  <span className="skeleton skeleton--meta" />
+                </div>
+                <div className="skeleton skeleton--title" />
+                <div className="skeleton skeleton--line" />
+                <div className="skeleton skeleton--line skeleton--line-short" />
+                <div className="feed-card__stats">
+                  <span className="skeleton skeleton--stat" />
+                  <span className="skeleton skeleton--stat" />
+                  <span className="skeleton skeleton--stat skeleton--stat-wide" />
+                </div>
+                <div className="virality-block">
+                  <div className="virality-row">
+                    <span className="skeleton skeleton--virality-label" />
+                    <span className="skeleton skeleton--virality-value" />
+                  </div>
+                  <div className="skeleton skeleton--virality-bar" />
+                </div>
+                <span className="skeleton skeleton--link" />
+              </article>
+            ))}
+          </div>
         ) : items.length === 0 ? (
           <p>Bu gorunum icin henuz kayit yok.</p>
         ) : filteredItems.length === 0 ? (
@@ -124,11 +149,23 @@ export default function MainStream(props: MainStreamProps) {
                   {cardDescription ? <p>{cardDescription}</p> : null}
 
                   <div className="feed-card__stats">
-                    <span>Virality: {item.virality ?? "-"}</span>
                     <span>Cluster: {item.clusterCount ?? "-"}</span>
                     <span>
                       Saat: {item.time ? new Date(item.time).toLocaleString("tr-TR") : "-"}
                     </span>
+                  </div>
+
+                  <div className="virality-block">
+                    <div className="virality-row">
+                      <span className="virality-label">Virality</span>
+                      <span className="virality-value">{formatVirality(item.virality)}</span>
+                    </div>
+                    <div className="virality-bar" aria-hidden="true">
+                      <div
+                        className="virality-bar__fill"
+                        style={{ width: `${getViralityScore(item.virality)}%` }}
+                      />
+                    </div>
                   </div>
 
                   <a
@@ -187,6 +224,19 @@ function getTurkeyImpact(item: FeedItem) {
   ];
 
   return signals.some((signal) => text.includes(signal));
+}
+
+function getViralityScore(value?: number) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, value));
+}
+
+function formatVirality(value?: number) {
+  const score = getViralityScore(value);
+  return `${score}/100`;
 }
 
 function matchesSearch(item: FeedItem, query: string) {
