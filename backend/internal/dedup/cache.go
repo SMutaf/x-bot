@@ -53,3 +53,7 @@ func (d *Deduplicator) IsTitleDuplicate(title string) bool {
 	d.Client.Set(d.Ctx, slug, "seen", 24*time.Hour)
 	return false
 }
+
+func (d *Deduplicator) HealthCheck() error {
+	return d.Client.Ping(d.Ctx).Err()
+}

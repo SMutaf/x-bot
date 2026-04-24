@@ -15,12 +15,14 @@ import (
 type Handler struct {
 	Monitoring    *monitoring.Manager
 	HealthManager *sourcehealth.Manager
+	Status        *StatusProvider
 }
 
-func NewHandler(m *monitoring.Manager, h *sourcehealth.Manager) *Handler {
+func NewHandler(m *monitoring.Manager, h *sourcehealth.Manager, s *StatusProvider) *Handler {
 	return &Handler{
 		Monitoring:    m,
 		HealthManager: h,
+		Status:        s,
 	}
 }
 
@@ -28,6 +30,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/feed", h.handleFeedSnapshot)
 
 	mux.HandleFunc("/api/dashboard/summary", h.handleSummary)
+	mux.HandleFunc("/api/dashboard/status", h.handleStatus)
 	mux.HandleFunc("/api/dashboard/published", h.handlePublished)
 	mux.HandleFunc("/api/dashboard/rejected", h.handleRejected)
 	mux.HandleFunc("/api/dashboard/sources", h.handleSources)
@@ -62,12 +65,43 @@ func (h *Handler) handleSummary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, summary)
 }
 
+func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, h.Status.Build())
+}
+
 func (h *Handler) handlePublished(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, h.Monitoring.GetPublished())
+	items := h.Monitoring.GetPublished()
+	viewID := strings.TrimSpace(r.URL.Query().Get("view"))
+	limit := parseLimit(r.URL.Query().Get("limit"), len(items))
+
+	if viewID != "" {
+		items = filterPublishedByView(items, viewID)
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Time.After(items[j].Time)
+	})
+
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+
+	writeJSON(w, items)
 }
 
 func (h *Handler) handleRejected(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, h.Monitoring.GetRejected())
+	items := h.Monitoring.GetRejected()
+	limit := parseLimit(r.URL.Query().Get("limit"), len(items))
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Time.After(items[j].Time)
+	})
+
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+
+	writeJSON(w, items)
 }
 
 func (h *Handler) handleSources(w http.ResponseWriter, r *http.Request) {
@@ -75,19 +109,30 @@ func (h *Handler) handleSources(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleHealthEvents(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, h.Monitoring.GetSourceHealth())
+	items := h.Monitoring.GetSourceHealth()
+	limit := parseLimit(r.URL.Query().Get("limit"), len(items))
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Time.After(items[j].Time)
+	})
+
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+
+	writeJSON(w, items)
 }
 
 func (h *Handler) handleDownloadPublished(w http.ResponseWriter, r *http.Request) {
-	serveDownload(w, h.Monitoring.PublishedPath(), "published.jsonl")
+	serveDownload(w, r, h.Monitoring.PublishedPath(), "published.jsonl")
 }
 
 func (h *Handler) handleDownloadRejected(w http.ResponseWriter, r *http.Request) {
-	serveDownload(w, h.Monitoring.RejectedPath(), "rejected.jsonl")
+	serveDownload(w, r, h.Monitoring.RejectedPath(), "rejected.jsonl")
 }
 
 func (h *Handler) handleDownloadSourceHealth(w http.ResponseWriter, r *http.Request) {
-	serveDownload(w, h.Monitoring.HealthPath(), "source_health.jsonl")
+	serveDownload(w, r, h.Monitoring.HealthPath(), "source_health.jsonl")
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -95,9 +140,9 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func serveDownload(w http.ResponseWriter, path string, filename string) {
+func serveDownload(w http.ResponseWriter, r *http.Request, path string, filename string) {
 	w.Header().Set("Content-Disposition", "attachment; filename="+filename)
-	http.ServeFile(w, nil, filepath.Clean(path))
+	http.ServeFile(w, r, filepath.Clean(path))
 }
 
 func parseLimit(raw string, fallback int) int {

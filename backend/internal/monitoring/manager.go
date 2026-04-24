@@ -36,7 +36,7 @@ func NewManager(dataDir string) (*Manager, error) {
 		publishedPath: filepath.Join(dataDir, "published.jsonl"),
 		rejectedPath:  filepath.Join(dataDir, "rejected.jsonl"),
 		healthPath:    filepath.Join(dataDir, "source_health.jsonl"),
-		maxInMemory:   300,
+		maxInMemory:   2000,
 		published:     make([]PublishedNewsEvent, 0),
 		rejected:      make([]RejectedNewsEvent, 0),
 		health:        make([]SourceHealthEvent, 0),
@@ -114,8 +114,8 @@ func (m *Manager) HealthPath() string {
 	return m.healthPath
 }
 
-func (m *Manager) GetSourceHealth() string {
-	return m.GetSourceHealth()
+func (m *Manager) GetSourceHealth() []SourceHealthEvent {
+	return m.GetSourceHealthEvents()
 }
 
 func (m *Manager) BuildSummary(snapshot []sourcehealth.Status) Summary {

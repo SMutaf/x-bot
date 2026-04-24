@@ -29,3 +29,11 @@ pip-log.txt
 
 # monitoring data
 backend/data/*.jsonl
+
+# dashboard build artifacts
+dashboard/node_modules/
+dashboard/dist/
+
+# local build caches
+.gocache/
+

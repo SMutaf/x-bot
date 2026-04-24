@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync/atomic"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
+	inFlight   atomic.Int32
 }
 
 func NewClient(baseURL string) *Client {
@@ -27,6 +29,9 @@ func NewClient(baseURL string) *Client {
 }
 
 func (c *Client) Analyze(req models.EditorialAnalysisRequest) (*models.EditorialAnalysisResponse, error) {
+	c.inFlight.Add(1)
+	defer c.inFlight.Add(-1)
+
 	url := c.baseURL + "/analyze"
 
 	jsonData, err := json.Marshal(req)
@@ -51,4 +56,24 @@ func (c *Client) Analyze(req models.EditorialAnalysisRequest) (*models.Editorial
 	}
 
 	return &result, nil
+}
+
+func (c *Client) HealthCheck() error {
+	client := &http.Client{Timeout: 2 * time.Second}
+
+	resp, err := client.Get(c.baseURL + "/")
+	if err != nil {
+		return fmt.Errorf("AI servis health check hatasi: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("AI servis health check status: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (c *Client) InFlight() int {
+	return int(c.inFlight.Load())
 }

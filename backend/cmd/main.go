@@ -47,6 +47,8 @@ func main() {
 	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
 	telegramRenderer := render.NewTelegramRenderer()
 	translator := translation.NewLibreTranslator("http://localhost:5000")
+	serviceStatus := dashboardapi.NewServiceStatusManager(cache, aiClient)
+	serviceStatus.Start(10 * time.Second)
 
 	processor := pipeline.NewProcessor(
 		newsScorer,
@@ -83,7 +85,12 @@ func main() {
 	// Dashboard API
 	go func() {
 		mux := http.NewServeMux()
-		api := dashboardapi.NewHandler(monitor, healthManager)
+		statusProvider := &dashboardapi.StatusProvider{
+			Monitoring: monitor,
+			Health:     healthManager,
+			Services:   serviceStatus,
+		}
+		api := dashboardapi.NewHandler(monitor, healthManager, statusProvider)
 		mux.HandleFunc("/api/feed/stream", stream.StreamHandler)
 		api.Register(mux)
 
