@@ -2,6 +2,7 @@ export interface FeedItem {
   time: string;
   title: string;
   description?: string;
+  descriptionTr?: string;
   hook?: string;
   summary?: string;
   importance?: string;

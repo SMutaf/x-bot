@@ -17,8 +17,9 @@ type EditorialAnalysisResponse struct {
 	Decision     string `json:"decision"` // PUBLISH | REJECT
 	RejectReason string `json:"reject_reason"`
 
-	Hook       string `json:"hook"`
-	Summary    string `json:"summary"`
-	Importance string `json:"importance"`
-	Sentiment  string `json:"sentiment"`
+	Hook          string `json:"hook"`
+	Summary       string `json:"summary"`
+	Importance    string `json:"importance"`
+	DescriptionTR string `json:"description_tr"`
+	Sentiment     string `json:"sentiment"`
 }

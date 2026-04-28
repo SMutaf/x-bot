@@ -7,24 +7,22 @@ import (
 
 	"github.com/SMutaf/twitter-bot/backend/internal/delivery/render"
 	"github.com/SMutaf/twitter-bot/backend/internal/delivery/telegram"
-	"github.com/SMutaf/twitter-bot/backend/internal/delivery/translation"
 	"github.com/SMutaf/twitter-bot/backend/internal/domain/models"
 	"github.com/SMutaf/twitter-bot/backend/internal/infra/ai"
 	"github.com/SMutaf/twitter-bot/backend/internal/infra/monitoring"
-	"github.com/SMutaf/twitter-bot/backend/internal/processing/cluster"
+	eventcluster "github.com/SMutaf/twitter-bot/backend/internal/processing/cluster"
 	"github.com/SMutaf/twitter-bot/backend/internal/processing/policy"
 	"github.com/SMutaf/twitter-bot/backend/internal/processing/scoring"
 )
 
 type Processor struct {
-	scorer     *scoring.NewsScorer
-	ai         *ai.Client
-	telegram   *telegram.ApprovalBot
-	cluster    *eventcluster.EventClusterer
-	monitor    *monitoring.Manager
-	renderer   *render.TelegramRenderer
-	translator *translation.LibreTranslator
-	istLoc     *time.Location
+	scorer   *scoring.NewsScorer
+	ai       *ai.Client
+	telegram *telegram.ApprovalBot
+	cluster  *eventcluster.EventClusterer
+	monitor  *monitoring.Manager
+	renderer *render.TelegramRenderer
+	istLoc   *time.Location
 }
 
 func NewProcessor(
@@ -34,18 +32,16 @@ func NewProcessor(
 	clusterer *eventcluster.EventClusterer,
 	monitor *monitoring.Manager,
 	renderer *render.TelegramRenderer,
-	translator *translation.LibreTranslator,
 ) *Processor {
 	loc, _ := time.LoadLocation("Europe/Istanbul")
 	return &Processor{
-		scorer:     scorer,
-		ai:         aiClient,
-		telegram:   tgBot,
-		cluster:    clusterer,
-		monitor:    monitor,
-		renderer:   renderer,
-		translator: translator,
-		istLoc:     loc,
+		scorer:   scorer,
+		ai:       aiClient,
+		telegram: tgBot,
+		cluster:  clusterer,
+		monitor:  monitor,
+		renderer: renderer,
+		istLoc:   loc,
 	}
 }
 
@@ -53,14 +49,14 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 	catPolicy := policy.Get(env.News.Category)
 
 	if env.Cluster.ClusterCount < catPolicy.MinClusterCount {
-		fmt.Printf("[HARD FILTER] %s için yetersiz kaynak (%d < %d): %s\n",
+		fmt.Printf("[HARD FILTER] %s icin yetersiz kaynak (%d < %d): %s\n",
 			env.News.Category, env.Cluster.ClusterCount, catPolicy.MinClusterCount, env.News.Title)
 		p.recordRejected(env, "process-min-cluster")
 		return nil
 	}
 
 	if env.Cluster.ClusterKey != "" && p.cluster.WasSentRecently(env.Cluster.ClusterKey) {
-		fmt.Printf("[EVENT DEDUPE] Aynı event yakın zamanda gönderilmiş, atlandı: %s\n", env.News.Title)
+		fmt.Printf("[EVENT DEDUPE] Ayni event yakin zamanda gonderilmis, atlandi: %s\n", env.News.Title)
 		p.recordRejected(env, "event-dedupe")
 		return nil
 	}
@@ -79,11 +75,11 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 			p.recordRejected(env, "virality-filter")
 			return nil
 		}
-		fmt.Printf("[CRITICAL OVERRIDE] Düşük skora rağmen geçirildi: %s\n", env.News.Title)
+		fmt.Printf("[CRITICAL OVERRIDE] Dusuk skora ragmen gecirildi: %s\n", env.News.Title)
 	}
 
 	if env.News.Category == models.CategoryTech && !p.isAllowedTechHour() {
-		fmt.Printf("[SAAT FİLTRE] Gönderilmiyor: %s\n", env.News.Title)
+		fmt.Printf("[SAAT FILTRE] Gonderilmiyor: %s\n", env.News.Title)
 		p.recordRejected(env, "tech-time-filter")
 		return nil
 	}
@@ -100,7 +96,7 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 
 	res, err := p.ai.Analyze(req)
 	if err != nil {
-		fmt.Printf("AI Hatası (%s): %v\n", env.News.Title, err)
+		fmt.Printf("AI Hatasi (%s): %v\n", env.News.Title, err)
 		p.recordRejected(env, "ai-error")
 		return err
 	}
@@ -124,46 +120,41 @@ func (p *Processor) Process(env models.NewsEnvelope) error {
 	}
 
 	if decision.Decision != models.DecisionPublish {
-		fmt.Printf("AI geçersiz decision döndü (%s): %s\n", decision.Decision, env.News.Title)
+		fmt.Printf("AI gecersiz decision dondu (%s): %s\n", decision.Decision, env.News.Title)
 		p.recordRejected(env, "ai-invalid-decision")
 		return nil
 	}
 
 	message := p.renderer.Render(env, decision)
 	if strings.TrimSpace(message) == "" {
-		fmt.Printf("AI boş veya geçersiz içerik döndü: %s\n", env.News.Title)
+		fmt.Printf("AI bos veya gecersiz icerik dondu: %s\n", env.News.Title)
 		p.recordRejected(env, "ai-empty-message")
 		return nil
 	}
 
 	publishedTime := p.buildPublishedTime(env)
-
-	fmt.Printf("AI cevap aldı - Message: %s...\n", message[:min(60, len(message))])
+	fmt.Printf("AI cevap aldi - Message: %s...\n", message[:min(60, len(message))])
 
 	if err := p.telegram.RequestApproval(message, string(env.News.Category), publishedTime); err != nil {
-		fmt.Printf("Telegram Hatası: %v\n", err)
+		fmt.Printf("Telegram Hatasi: %v\n", err)
 		p.recordRejected(env, "telegram-error")
 		return err
 	}
 
-	translatedDesc, err := p.translator.Translate(env.News.Description, "en", "tr")
-	if err == nil {
-		env.News.Description = translatedDesc
-	}
-
 	p.monitor.RecordPublished(monitoring.PublishedNewsEvent{
-		Time:         time.Now(),
-		Title:        env.News.Title,
-		Description:  env.News.Description,
-		Hook:         decision.Hook,
-		Summary:      decision.Summary,
-		Importance:   decision.Importance,
-		Sentiment:    decision.Sentiment,
-		Category:     string(env.News.Category),
-		Source:       env.News.Source,
-		Link:         env.News.Link,
-		Virality:     score.Final,
-		ClusterCount: env.Cluster.ClusterCount,
+		Time:          time.Now(),
+		Title:         env.News.Title,
+		Description:   env.News.Description,
+		DescriptionTR: strings.TrimSpace(res.DescriptionTR),
+		Hook:          decision.Hook,
+		Summary:       decision.Summary,
+		Importance:    decision.Importance,
+		Sentiment:     decision.Sentiment,
+		Category:      string(env.News.Category),
+		Source:        env.News.Source,
+		Link:          env.News.Link,
+		Virality:      score.Final,
+		ClusterCount:  env.Cluster.ClusterCount,
 	})
 
 	if env.Cluster.ClusterKey != "" {
@@ -221,11 +212,11 @@ func (p *Processor) buildPublishedTime(env models.NewsEnvelope) string {
 	diff := time.Since(env.News.PublishedAt)
 	switch {
 	case diff < 5*time.Minute:
-		return "🔴 ŞU AN"
+		return "SIMDI"
 	case diff < 30*time.Minute:
-		return fmt.Sprintf("%d dk önce", int(diff.Minutes()))
+		return fmt.Sprintf("%d dk once", int(diff.Minutes()))
 	case diff < 2*time.Hour:
-		return fmt.Sprintf("%d saat önce", int(diff.Hours()))
+		return fmt.Sprintf("%d saat once", int(diff.Hours()))
 	default:
 		return env.News.PublishedAt.In(p.istLoc).Format("15:04")
 	}

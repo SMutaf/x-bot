@@ -39,6 +39,7 @@ async def analyze(req: EditorialAnalysisRequest):
         hook=result.get("hook", ""),
         summary=result.get("summary", ""),
         importance=result.get("importance", ""),
+        description_tr=result.get("description_tr", ""),
         sentiment=result.get("sentiment", "neutral"),
     )
 

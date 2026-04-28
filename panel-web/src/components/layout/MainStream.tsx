@@ -194,7 +194,7 @@ function getCategoryTone(category: string) {
 
 function getTurkeyImpact(item: FeedItem) {
   const text = normalizeSearchText(
-    `${item.title} ${item.description ?? ""} ${item.summary ?? ""} ${item.importance ?? ""} ${item.source}`
+    `${item.title} ${item.description ?? ""} ${item.descriptionTr ?? ""} ${item.summary ?? ""} ${item.importance ?? ""} ${item.source}`
   );
 
   const signals = [
@@ -236,6 +236,7 @@ function matchesSearch(item: FeedItem, query: string) {
       item.hook,
       item.summary,
       item.description,
+      item.descriptionTr,
       item.source,
       item.category,
       item.importance,

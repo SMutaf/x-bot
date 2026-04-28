@@ -6,6 +6,7 @@ type PublishedItem struct {
 	Time         string `json:"time"`
 	Title        string `json:"title"`
 	Description  string `json:"description"`
+	DescriptionTR string `json:"descriptionTr"`
 	Hook         string `json:"hook"`
 	Summary      string `json:"summary"`
 	Importance   string `json:"importance"`

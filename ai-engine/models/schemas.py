@@ -35,6 +35,10 @@ class EditorialAnalysisResponse(BaseModel):
         default="",
         description="Neden önemli olduğunu anlatan kısa cümle"
     )
+    description_tr: str = Field(
+        default="",
+        description="Orijinal haber detayını anlamını koruyarak Türkçeye çeviren kısa metin"
+    )
     sentiment: Literal["positive", "negative", "neutral"] = Field(
         default="neutral",
         description="Haber tonu"

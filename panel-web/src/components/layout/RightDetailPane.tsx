@@ -25,6 +25,7 @@ export default function RightDetailPane(props: RightDetailPaneProps) {
   const displayTitle = selectedItem.hook || selectedItem.title;
   const displaySummary = selectedItem.summary;
   const rawDescription = selectedItem.description;
+  const translatedDescription = selectedItem.descriptionTr;
   const displayImportance = selectedItem.importance;
 
   return (
@@ -71,7 +72,7 @@ export default function RightDetailPane(props: RightDetailPaneProps) {
 
       <div className="detail-card">
         <h3 className="detail-card__title">Detay</h3>
-        <p>{rawDescription || "-"}</p>
+        <p>{translatedDescription || rawDescription || "-"}</p>
       </div>
 
       <div className="detail-card">

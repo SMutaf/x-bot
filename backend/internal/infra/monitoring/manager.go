@@ -26,6 +26,7 @@ func (m *Manager) RecordPublished(event PublishedNewsEvent) {
 		Time:         event.Time.Format(time.RFC3339),
 		Title:        event.Title,
 		Description:  event.Description,
+		DescriptionTR: event.DescriptionTR,
 		Hook:         event.Hook,
 		Summary:      event.Summary,
 		Importance:   event.Importance,

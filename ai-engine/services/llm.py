@@ -14,7 +14,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 load_dotenv()
 
-# ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -28,7 +27,7 @@ SENSITIVE_KEYWORDS = [
     "deprem", "tsunami", "afet", "felaket", "yangın",
     "taciz", "tecavüz", "istismar", "şiddet", "cinayet",
     "kaza", "yaralı", "ağır yaralı", "hayatını kaybetmek",
-    "kill", "death", "dead", "attack", "bombing", "war"
+    "kill", "death", "dead", "attack", "bombing", "war",
 ]
 
 PRE_FILTER_PATTERNS = [
@@ -71,11 +70,17 @@ class EditorialAnalysisOutput(BaseModel):
     hook: Optional[str] = Field(default="", description="Kısa, dikkat çekici ilk satır. Türkçe. Maksimum 10 kelime.")
     summary: Optional[str] = Field(default="", description="Haberi 1-2 kısa cümlede anlaşılır şekilde özetleyen Türkçe metin.")
     importance: Optional[str] = Field(default="", description="Bu haberin neden önemli olduğunu anlatan 1 kısa cümlelik Türkçe metin.")
-    sentiment: Literal["positive", "negative", "neutral"] = Field(default="neutral", description="positive, negative veya neutral")
+    description_tr: Optional[str] = Field(
+        default="",
+        description="Orijinal haber detayını anlamını değiştirmeden doğal Türkçe ile aktaran 2-4 kısa cümle."
+    )
+    sentiment: Literal["positive", "negative", "neutral"] = Field(
+        default="neutral",
+        description="positive, negative veya neutral"
+    )
 
 
 class GeminiService:
-    # Tek bir LLM çağrısı için maksimum bekleme süresi (saniye)
     LLM_TIMEOUT_SECONDS = 45
 
     def __init__(self):
@@ -89,7 +94,10 @@ class GeminiService:
             request_timeout=self.LLM_TIMEOUT_SECONDS,
         )
         self.parser = JsonOutputParser(pydantic_object=EditorialAnalysisOutput)
-        logger.info("GeminiService başlatıldı (model=gemma-3-12b-it, timeout=%ds)", self.LLM_TIMEOUT_SECONDS)
+        logger.info(
+            "GeminiService başlatıldı (model=gemma-3-12b-it, timeout=%ds)",
+            self.LLM_TIMEOUT_SECONDS,
+        )
 
     def _detect_news_type(self, title: str, content: str, category: str) -> str:
         text = (title + " " + content).lower()
@@ -161,7 +169,7 @@ class GeminiService:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=3, max=10),
         retry=retry_if_exception_type((TimeoutError, ConnectionError, OSError)),
-        reraise=True
+        reraise=True,
     )
     def _invoke_chain(self, chain, inputs):
         return chain.invoke(inputs)
@@ -170,8 +178,7 @@ class GeminiService:
         if not text:
             return ""
         text = re.sub(r"\s+", " ", text).strip()
-        text = text.replace("\u201c", '"').replace("\u201d", '"').replace("\u2019", "'")
-        return text
+        return text.replace("\u201c", '"').replace("\u201d", '"').replace("\u2019", "'")
 
     def _normalize_sentiment(self, sentiment: str) -> str:
         sentiment = self._clean_text(sentiment).lower()
@@ -191,14 +198,17 @@ class GeminiService:
     ):
         short_title = title[:60] + "..." if len(title) > 60 else title
 
-        # ── Pre-filter (Python tarafında, LLM'e gitmeden) ────────────────────
         pre_reject = pre_filter(title, source, category)
         if pre_reject:
             logger.info("[PRE-FILTER] RED (%s): %s", pre_reject, short_title)
             return {
                 "decision": "REJECT",
                 "reject_reason": pre_reject,
-                "hook": "", "summary": "", "importance": "", "sentiment": "neutral",
+                "hook": "",
+                "summary": "",
+                "importance": "",
+                "description_tr": "",
+                "sentiment": "neutral",
             }
 
         news_type = self._detect_news_type(title, content or "", category)
@@ -207,7 +217,11 @@ class GeminiService:
 
         logger.info(
             "[AI] Analiz başlıyor | cat=%s type=%s cluster=%d virality=%d | %s",
-            category, news_type, cluster_count, virality, short_title
+            category,
+            news_type,
+            cluster_count,
+            virality,
+            short_title,
         )
 
         template = """
@@ -224,7 +238,7 @@ YAYINLANABİLECEK HABERLER:
 TÜRKİYE BAĞLANTI KURALLARI:
 Aşağıdaki durumlarda haberin Türkiye ile "dolaylı bağlantısı" olduğunu kabul et ve PUBLISH yönünde değerlendir:
 - ABD, AB veya Çin ekonomik/ticaret kararları → TL kuru, BIST, ihracat/ithalat doğrudan etkilenir
-- Fed veya ECB faiz kararları → gelişen piyasa (EM) sermaye akışı üzerinden Türkiye'yi etkiler
+- Fed veya ECB faiz kararları → gelişen piyasa sermaye akışı üzerinden Türkiye'yi etkiler
 - Orta Doğu güvenlik gelişmeleri (Suriye, İran, İsrail, Körfez) → enerji fiyatları, turizm, sınır güvenliği
 - NATO veya savunma gelişmeleri → Türkiye NATO üyesidir, her karar doğrudan bağlayıcıdır
 - Körfez / Hürmüz Boğazı / LNG enerji haberleri → Türkiye enerjisinin büyük bölümünü ithal eder
@@ -263,13 +277,14 @@ HOOK KURALI: {hook_rule}
 REJECT ise:
 - decision = "REJECT"
 - reject_reason = kısa sebep
-- hook, summary, importance boş string olabilir
+- hook, summary, importance, description_tr boş string olabilir
 
 PUBLISH ise:
 - decision = "PUBLISH"
 - hook = kısa dikkat çekici ilk satır
 - summary = 1-2 kısa cümle
 - importance = neden önemli
+- description_tr = içeriği yorum katmadan, yeni bilgi eklemeden, anlamı koruyarak Türkçeye çeviren 2-4 kısa cümle
 - sentiment = positive / negative / neutral
 
 {format_instructions}
@@ -278,34 +293,45 @@ PUBLISH ise:
         prompt = PromptTemplate(
             template=template,
             input_variables=[
-                "category", "source", "title", "content", "news_type",
-                "time_context", "cluster_count", "virality",
-                "tone", "hook_rule", "summary_rule", "importance_rule",
+                "category",
+                "source",
+                "title",
+                "content",
+                "news_type",
+                "time_context",
+                "cluster_count",
+                "virality",
+                "tone",
+                "hook_rule",
+                "summary_rule",
+                "importance_rule",
             ],
             partial_variables={"format_instructions": self.parser.get_format_instructions()},
         )
 
         chain = prompt | self.llm | self.parser
 
-        # ── LLM çağrısı — süre loglanıyor ────────────────────────────────────
         t0 = time.time()
         logger.info("[AI] LLM isteği gönderiliyor... (%s)", short_title)
 
         try:
-            result = self._invoke_chain(chain, {
-                "category": category,
-                "source": source,
-                "title": title,
-                "content": content or "Detay bulunmuyor.",
-                "news_type": news_type,
-                "time_context": time_context,
-                "cluster_count": cluster_count,
-                "virality": virality,
-                "tone": strategy["tone"],
-                "hook_rule": strategy["hook_rule"],
-                "summary_rule": strategy["summary_rule"],
-                "importance_rule": strategy["importance_rule"],
-            })
+            result = self._invoke_chain(
+                chain,
+                {
+                    "category": category,
+                    "source": source,
+                    "title": title,
+                    "content": content or "Detay bulunmuyor.",
+                    "news_type": news_type,
+                    "time_context": time_context,
+                    "cluster_count": cluster_count,
+                    "virality": virality,
+                    "tone": strategy["tone"],
+                    "hook_rule": strategy["hook_rule"],
+                    "summary_rule": strategy["summary_rule"],
+                    "importance_rule": strategy["importance_rule"],
+                },
+            )
         except Exception as e:
             elapsed = time.time() - t0
             logger.error("[AI] LLM HATA (%.1fs) — %s → %s", elapsed, type(e).__name__, short_title)
@@ -313,7 +339,11 @@ PUBLISH ise:
             return {
                 "decision": "REJECT",
                 "reject_reason": "llm-exception",
-                "hook": "", "summary": "", "importance": "", "sentiment": "neutral",
+                "hook": "",
+                "summary": "",
+                "importance": "",
+                "description_tr": "",
+                "sentiment": "neutral",
             }
 
         elapsed = time.time() - t0
@@ -326,7 +356,11 @@ PUBLISH ise:
             return {
                 "decision": "REJECT",
                 "reject_reason": reason or "editorial-reject",
-                "hook": "", "summary": "", "importance": "", "sentiment": "neutral",
+                "hook": "",
+                "summary": "",
+                "importance": "",
+                "description_tr": "",
+                "sentiment": "neutral",
             }
 
         if decision != "PUBLISH":
@@ -334,16 +368,20 @@ PUBLISH ise:
             return {
                 "decision": "REJECT",
                 "reject_reason": "invalid-decision",
-                "hook": "", "summary": "", "importance": "", "sentiment": "neutral",
+                "hook": "",
+                "summary": "",
+                "importance": "",
+                "description_tr": "",
+                "sentiment": "neutral",
             }
 
         hook = self._clean_text(result.get("hook", ""))
         summary = self._clean_text(result.get("summary", ""))
         importance = self._clean_text(result.get("importance", ""))
+        description_tr = self._clean_text(result.get("description_tr", ""))
         sentiment = self._normalize_sentiment(result.get("sentiment", "neutral"))
 
-        logger.info("[AI] PUBLISH | hook='%s...' sentiment=%s | %s",
-                    hook[:40], sentiment, short_title)
+        logger.info("[AI] PUBLISH | hook='%s...' sentiment=%s | %s", hook[:40], sentiment, short_title)
 
         return {
             "decision": "PUBLISH",
@@ -351,5 +389,6 @@ PUBLISH ise:
             "hook": hook,
             "summary": summary,
             "importance": importance,
+            "description_tr": description_tr,
             "sentiment": sentiment,
         }

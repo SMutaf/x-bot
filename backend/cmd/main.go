@@ -6,11 +6,10 @@ import (
 	"time"
 
 	"github.com/SMutaf/twitter-bot/backend/config"
-	"github.com/SMutaf/twitter-bot/backend/internal/api/dashboard"
+	dashboardapi "github.com/SMutaf/twitter-bot/backend/internal/api/dashboard"
 	"github.com/SMutaf/twitter-bot/backend/internal/api/stream"
 	"github.com/SMutaf/twitter-bot/backend/internal/delivery/render"
 	"github.com/SMutaf/twitter-bot/backend/internal/delivery/telegram"
-	"github.com/SMutaf/twitter-bot/backend/internal/delivery/translation"
 	"github.com/SMutaf/twitter-bot/backend/internal/domain/models"
 	"github.com/SMutaf/twitter-bot/backend/internal/infra/ai"
 	"github.com/SMutaf/twitter-bot/backend/internal/infra/middleware"
@@ -19,7 +18,7 @@ import (
 	"github.com/SMutaf/twitter-bot/backend/internal/ingestion/filter"
 	"github.com/SMutaf/twitter-bot/backend/internal/ingestion/scraper"
 	"github.com/SMutaf/twitter-bot/backend/internal/ingestion/sourcehealth"
-	"github.com/SMutaf/twitter-bot/backend/internal/processing/cluster"
+	eventcluster "github.com/SMutaf/twitter-bot/backend/internal/processing/cluster"
 	"github.com/SMutaf/twitter-bot/backend/internal/processing/pipeline"
 	"github.com/SMutaf/twitter-bot/backend/internal/processing/scoring"
 	"golang.org/x/time/rate"
@@ -48,7 +47,6 @@ func main() {
 	aiClient := ai.NewClient("http://localhost:8000")
 	tgBot := telegram.NewApprovalBot(cfg.TelegramToken, cfg.TelegramChatID)
 	telegramRenderer := render.NewTelegramRenderer()
-	translator := translation.NewLibreTranslator("http://localhost:5000")
 	serviceStatus := dashboardapi.NewServiceStatusManager(cache, aiClient)
 	serviceStatus.Start(10 * time.Second)
 
@@ -59,7 +57,6 @@ func main() {
 		clusterer,
 		monitor,
 		telegramRenderer,
-		translator,
 	)
 
 	channels := pipeline.CategoryChannels{
