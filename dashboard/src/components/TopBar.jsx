@@ -31,7 +31,6 @@ export default function TopBar({ status }) {
     <header className="topbar topbar--ops">
       <div className="topbar__main">
         <div className="topbar__brand">
-          <div className="topbar__logo">x</div>
           <div>
             <div className="topbar__title">x-bot Dashboard</div>
             <div className="topbar__caption">Operations Console</div>

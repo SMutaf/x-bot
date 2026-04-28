@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import type { FeedItem } from "../../features/feed/types";
 import { useFeedStream } from "../../hooks/useFeedStream";
 
+const SHOW_STREAM_DEBUG = false;
+
 type MainStreamProps = {
   activeViewId: string;
   searchQuery: string;
@@ -55,22 +57,26 @@ export default function MainStream(props: MainStreamProps) {
         </div>
       </div>
 
-      <section className="stream-debug-card">
-        <div className="stream-debug-row">
-          <strong>Son event:</strong> {latestEventName ?? "Henuz event yok"}
-        </div>
-        <div className="stream-debug-row">
-          <strong>Son zaman:</strong> {connection.lastEventAt ?? "-"}
-        </div>
-        <div className="stream-debug-row">
-          <strong>Hata:</strong> {connection.lastError ?? "-"}
-        </div>
-      </section>
+      {SHOW_STREAM_DEBUG ? (
+        <>
+          <section className="stream-debug-card">
+            <div className="stream-debug-row">
+              <strong>Son event:</strong> {latestEventName ?? "Henuz event yok"}
+            </div>
+            <div className="stream-debug-row">
+              <strong>Son zaman:</strong> {connection.lastEventAt ?? "-"}
+            </div>
+            <div className="stream-debug-row">
+              <strong>Hata:</strong> {connection.lastError ?? "-"}
+            </div>
+          </section>
 
-      <section className="stream-preview">
-        <div className="panel-title">Ham Event Onizleme</div>
-        <pre className="code-block">{latestRawData ?? "Yeni event bekleniyor..."}</pre>
-      </section>
+          <section className="stream-preview">
+            <div className="panel-title">Ham Event Onizleme</div>
+            <pre className="code-block">{latestRawData ?? "Yeni event bekleniyor..."}</pre>
+          </section>
+        </>
+      ) : null}
 
       <section className="stream-placeholder-card">
         <div className="panel-title">Feed Listesi</div>
